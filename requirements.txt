@@ -1,0 +1,41 @@
+# System dependency (run before pip install):
+# apt-get update -qq && apt-get install -y libaio-dev -qq
+
+# PyTorch with CUDA 12.6 (install separately):
+# pip install torch==2.9.0 torchvision==0.24.0 torchaudio==2.9.0 --index-url https://download.pytorch.org/whl/cu126
+
+accelerate==0.34.2
+attrdict
+contractions
+CurrencyConverter
+datasets==2.21.0
+dateparser
+deepspeed==0.15.0
+evaluate
+flash-attn --no-build-isolation
+gensim
+GPUtil
+mpi4py
+ninja==1.13.0
+nlpaug
+numpy==1.26.4
+nvidia-ml-py3
+nvidia_smi
+packaging
+peft==0.12.0
+protobuf==4.25.5
+psutil
+pynvml
+pyspellchecker
+rouge-score
+sentence-transformers==2.7.0
+sentencepiece
+setuptools
+tensorboardX
+#torch==2.9.0
+#torchaudio==2.9.0
+#torchvision==0.24.0
+tqdm
+transformers==4.44.2
+wheel
+word2number
