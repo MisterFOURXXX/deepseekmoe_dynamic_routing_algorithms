@@ -9,7 +9,7 @@ setup(
     author="Mohammad Mahdavi, Apiwit Karnjanavivin",
     author_email=["mohammad.mahdavi@gisma.com", "Apiwit.Karnjanavivin@gisma-student.com"]
     description="Enhancing DeepSeek Architecture-Based Chatbots Using Dynamic Routing Algorithms",
-    keywords=["", "", "", ""],
+    keywords=[],
     install_requires=open("requirements.txt").read().splitlines(),
     include_package_data=True,
 )

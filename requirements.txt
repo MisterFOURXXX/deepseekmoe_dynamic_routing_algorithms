@@ -12,7 +12,7 @@ datasets==2.21.0
 dateparser
 deepspeed==0.15.0
 evaluate
-flash-attn --no-build-isolation
+#flash-attn --no-build-isolation
 gensim
 GPUtil
 mpi4py
