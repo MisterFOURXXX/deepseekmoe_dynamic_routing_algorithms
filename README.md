@@ -1,38 +1,42 @@
+**Repository Structure**
+
+```text
 deepseekmoe_dynamic_routing_algorithms/
 ├── datasets/
 ├── notebooks/
-│ ├── 01_training_comparison.ipynb
-│ ├── 02_fine_tuning_comparison.ipynb
-│ └── 03_evaluation_comparison.ipynb
+│   ├── 01_training_comparison.ipynb
+│   ├── 02_fine_tuning_comparison.ipynb
+│   └── 03_evaluation_comparison.ipynb
 ├── source/
-│ ├── __init__.py 
-│ ├── deepseek_baseline/
-│           ├── config.py                        # DeepseekConfig (baseline)
-│           ├── model.py                         # Full model architecture (baseline)
-│ ├── deepseek_dynamics_routing/
-│           ├── config.py                        # DeepseekConfig (with max_routed_experts)
-│           ├── model.py                         # Full model architecture (DYNMoE)
-│           ├── adaptive_tuning.py               # AdaptiveExpertTuningCallback
-│ ├── data_preprocessing.py
-│ ├── training_utils/
-│           ├── configurations.py
-│           ├── monitoring.py
-│           ├── save_model.py                    # Save model + tokenizer
-│           ├── summarization.py                 # Training summary table
-│ ├── fine_tuning_utils/
-│           ├── model_loading.py
-│           ├── configurations.py
-│           ├── monitoring.py
-│           ├── save_model.py                    # Save model + tokenizer
-│           ├── summarization.py                 # Training summary table
-│ └── evaluation.py
-│           ├── model_loading.py
-│           ├── evaluation.py
+│   ├── __init__.py 
+│   ├── deepseek_baseline/
+│   │   ├── config.py                        # DeepseekConfig (baseline)
+│   │   └── model.py                         # Full model architecture (baseline)
+│   ├── deepseek_dynamics_routing/
+│   │   ├── config.py                        # DeepseekConfig (with max_routed_experts)
+│   │   ├── model.py                         # Full model architecture (DYNMoE)
+│   │   └── adaptive_tuning.py               # AdaptiveExpertTuningCallback
+│   ├── data_preprocessing.py
+│   ├── training_utils/
+│   │   ├── configurations.py
+│   │   ├── monitoring.py
+│   │   ├── save_model.py                    # Save model + tokenizer
+│   │   └── summarization.py                 # Training summary table
+│   ├── fine_tuning_utils/
+│   │   ├── model_loading.py
+│   │   ├── configurations.py
+│   │   ├── monitoring.py
+│   │   ├── save_model.py                    # Save model + tokenizer
+│   │   └── summarization.py                 # Training summary table
+│   └── evaluation.py
+│       ├── model_loading.py
+│       └── evaluation.py
 ├── checkpoints/
 ├── README.md
 ├── requirements.txt
 ├── setup.py
 └── setup.sh                  # System dependencies + PyTorch + pip install
+```
 
 **Step 1: Setup system environment**
 bash setup.sh
