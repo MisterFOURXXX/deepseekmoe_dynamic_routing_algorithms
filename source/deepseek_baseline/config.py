@@ -1,3 +1,4 @@
+from transformers.utils import logging
 from transformers.configuration_utils import PretrainedConfig
 
 logger = logging.get_logger(__name__)
