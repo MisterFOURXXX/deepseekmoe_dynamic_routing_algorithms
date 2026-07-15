@@ -446,6 +446,7 @@ class MoEGate(nn.Module):
             self.dropped_embeddings.zero_()
             self.audit_counter = 0
 
+# REVISED Auxiliary load balancing loss #####################################
 class AddAuxiliaryLoss(torch.autograd.Function):
     """
     The trick function of adding auxiliary (aux) loss, 
@@ -1019,7 +1020,7 @@ Deepseek_ATTENTION_CLASSES = {
     "sdpa": DeepseekSdpaAttention,
 }
 
-# Update DecoderLayer
+# Update DecoderLayer ##############################################################
 class DeepseekDecoderLayer(nn.Module):
     def __init__(self, config: DeepseekConfig, layer_idx: int):
         super().__init__()

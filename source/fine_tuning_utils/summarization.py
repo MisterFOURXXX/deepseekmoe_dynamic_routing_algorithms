@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 def print_finetuning_summary(resource_monitor, moemetrics_callback, train_result, eval_results, perplexity):
-    # Same as print_training_summary but with different title
+    
     avg_gpu_memory = np.mean([m['gpu_mem_gb'] for m in resource_monitor.resource_metrics])
     avg_system_memory = np.mean([m['sys_mem_gb'] for m in resource_monitor.resource_metrics])
     avg_gpu_usage = np.mean([m['gpu_util'] for m in resource_monitor.resource_metrics])
