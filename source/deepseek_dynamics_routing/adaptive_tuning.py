@@ -1,4 +1,6 @@
 from transformers import TrainerCallback
+from deepseek_dynamics_routing.model import DeepseekForCausalLM
+from deepseek_dynamics_routing.config import DeepseekConfig
 
 class AdaptiveExpertTuningCallback(TrainerCallback):
     def __init__(self, audit_steps: int = ADAPTIVE_AUDIT_STEPS):
