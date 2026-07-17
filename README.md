@@ -41,7 +41,7 @@ deepseekmoe_dynamic_routing_algorithms/
 cd /kaggle/working/deepseekmoe_dynamic_routing_algorithms
 
 **Step 1: Setup system environment**
-bash setup.sh
+!bash setup.sh
 
 **Step 2: Install Python package**
 pip install -e .
@@ -50,4 +50,4 @@ pip install -e .
 !kill -9 $(pgrep -f ipykernel_launcher)
 
 **Execute Training Notebook**
-jupyter nbconvert --to notebook --execute notebook/01_training_comparison.ipynb --stdout
+!jupyter nbconvert --to notebook --execute /kaggle/working/deepseekmoe_dynamic_routing_algorithms/notebook/01_training_comparison.ipynb

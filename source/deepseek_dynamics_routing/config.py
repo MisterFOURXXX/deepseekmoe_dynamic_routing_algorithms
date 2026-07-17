@@ -24,7 +24,7 @@ BIAS_UPDATE_RATE = 0.001             # was 0.001 – stronger bias adjustments t
 
 logger = logging.get_logger(__name__)
 
-DEEPSEEK_PRETRAINED_CONFIG_ARCHIVE_MAP = {}
+#DEEPSEEK_PRETRAINED_CONFIG_ARCHIVE_MAP = {}
 class DeepseekConfig(PretrainedConfig):
     r"""
     This is the configuration class to store the configuration of a [`DeepseekModel`]. It is used to instantiate an DeepSeek
@@ -118,7 +118,7 @@ class DeepseekConfig(PretrainedConfig):
 
     model_type = "deepseek"
     keys_to_ignore_at_inference = ["past_key_values"]
-
+    
     def __init__(
         self,
         vocab_size=102400,
@@ -129,8 +129,8 @@ class DeepseekConfig(PretrainedConfig):
         num_attention_heads=32,
         num_key_value_heads=32,
         n_shared_experts=2,
-        n_routed_experts=8,
-        num_experts_per_tok=2,
+        n_routed_experts=None,                 ########
+        num_experts_per_tok=2,                 # Will be ignore in MoEGate.forward() using K_r -> to be competible to compile with DeepSeekMoE compiler
         moe_layer_freq = 1,
         first_k_dense_replace = 0,
         norm_topk_prob = False,
@@ -161,6 +161,8 @@ class DeepseekConfig(PretrainedConfig):
         self.num_hidden_layers = num_hidden_layers
         self.num_attention_heads = num_attention_heads
         self.n_shared_experts = n_shared_experts
+        if n_routed_experts is None:
+            n_routed_experts = MAX_ROUTED_EXPERTS
         self.n_routed_experts = n_routed_experts
         self.num_experts_per_tok = num_experts_per_tok
         self.moe_layer_freq = moe_layer_freq

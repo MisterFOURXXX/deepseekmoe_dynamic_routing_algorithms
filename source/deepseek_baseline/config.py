@@ -3,7 +3,7 @@ from transformers.configuration_utils import PretrainedConfig
 
 logger = logging.get_logger(__name__)
 
-DEEPSEEK_PRETRAINED_CONFIG_ARCHIVE_MAP = {}
+# DEEPSEEK_PRETRAINED_CONFIG_ARCHIVE_MAP = {}
 class DeepseekConfig(PretrainedConfig):
     r"""
     This is the configuration class to store the configuration of a [`DeepseekModel`]. It is used to instantiate an DeepSeek
