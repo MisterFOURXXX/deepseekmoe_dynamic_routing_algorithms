@@ -3,7 +3,7 @@
 apt-get update -qq && apt-get install -y libaio-dev -qq
 
 # PyTorch with CUDA
-pip install torch==2.9.0 torchvision==0.24.0 torchaudio==2.9.0 --index-url https://download.pytorch.org/whl/cu126
+pip install torch==2.9.0 torchvision==0.24.0 torchaudio==2.9.0 --index-url https://download.pytorch.org/whl/cu128
 
 # Python packages
 pip install -r requirements.txt
