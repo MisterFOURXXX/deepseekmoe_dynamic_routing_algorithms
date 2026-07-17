@@ -2,6 +2,8 @@ from transformers import TrainerCallback
 from model import DynMoEForCausalLM
 # from config import DynMoEConfig
 
+ADAPTIVE_AUDIT_STEPS = 10
+
 class AdaptiveExpertTuningCallback(TrainerCallback):
     """Callback for adaptive expert tuning during training."""
     def __init__(self, audit_steps: int = ADAPTIVE_AUDIT_STEPS):

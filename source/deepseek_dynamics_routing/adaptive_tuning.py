@@ -2,6 +2,8 @@ from transformers import TrainerCallback
 from model import DeepseekForCausalLM
 # from config import DeepseekConfig
 
+ADAPTIVE_AUDIT_STEPS = 10
+
 class AdaptiveExpertTuningCallback(TrainerCallback):
     def __init__(self, audit_steps: int = ADAPTIVE_AUDIT_STEPS):
         self.audit_steps = audit_steps
