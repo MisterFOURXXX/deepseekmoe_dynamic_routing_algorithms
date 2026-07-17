@@ -46,8 +46,8 @@ if is_torch_fx_available():
         _prepare_4d_causal_attention_mask = torch.fx.wrap(_prepare_4d_causal_attention_mask)
 
 #from .config import DynMoEConfig as DYNMoEBaseConfig
-from DYNMoE_baseline.config import DynMoEConfig
-from DYNMoE_baseline.adaptive_tuning import AdaptiveExpertTuningCallback
+from config import DynMoEConfig
+from adaptive_tuning import AdaptiveExpertTuningCallback
 
 # DYNMoE RMS NORM 
 class DynMoERMSNorm(nn.Module):

@@ -35,7 +35,7 @@ from transformers.utils import (
 from transformers.utils.import_utils import is_torch_fx_available
 
 # from .config import DeepseekConfig
-from deepseek_baseline.config import DeepseekConfig
+from config import DeepseekConfig
 
 if is_flash_attn_2_available():
     from flash_attn import flash_attn_func, flash_attn_varlen_func
