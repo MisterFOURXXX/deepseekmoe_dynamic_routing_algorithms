@@ -47,7 +47,7 @@ if is_torch_fx_available():
 
 #from .config import DynMoEConfig as DYNMoEBaseConfig
 from config import DynMoEConfig
-from adaptive_tuning import AdaptiveExpertTuningCallback
+#from adaptive_tuning import AdaptiveExpertTuningCallback
 
 # DYNMoE RMS NORM 
 class DynMoERMSNorm(nn.Module):
