@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.insert(0, os.path.abspath('.'))
+
 from transformers import AutoTokenizer
 from source.deepseek_baseline.model import DeepseekForCausalLM
 

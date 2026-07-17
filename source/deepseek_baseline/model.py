@@ -35,6 +35,9 @@ from transformers.utils import (
 from transformers.utils.import_utils import is_torch_fx_available
 
 # from .config import DeepseekConfig
+import sys
+import os
+sys.path.insert(0, os.path.abspath('.'))
 from config import DeepseekConfig
 
 if is_flash_attn_2_available():
