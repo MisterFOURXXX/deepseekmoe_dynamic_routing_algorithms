@@ -48,3 +48,5 @@ cd /kaggle/working/deepseekmoe_dynamic_routing_algorithms
 
 **Step 3: Execute Training Notebook**
 !jupyter nbconvert --to notebook --execute /kaggle/working/deepseekmoe_dynamic_routing_algorithms/notebook/01_training_comparison.ipynb
+
+evaluation/fine_tuning_utils/training_utils

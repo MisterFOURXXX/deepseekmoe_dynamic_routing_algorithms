@@ -1,3 +1,9 @@
+import sys
+import os
+sys.path.insert(0, os.path.abspath('..'))
+from DYNMoE_baseline.config import DynMoEConfig
+from DYNMoE_baseline.adaptive_tuning import AdaptiveExpertTuningCallback
+
 import torch
 import transformers
 import accelerate
@@ -44,10 +50,6 @@ if is_torch_fx_available():
     if not is_torch_greater_or_equal_than_1_13:
         import torch.fx
         _prepare_4d_causal_attention_mask = torch.fx.wrap(_prepare_4d_causal_attention_mask)
-
-#from .config import DynMoEConfig as DYNMoEBaseConfig
-from config import DynMoEConfig
-#from adaptive_tuning import AdaptiveExpertTuningCallback
 
 # DYNMoE RMS NORM 
 class DynMoERMSNorm(nn.Module):

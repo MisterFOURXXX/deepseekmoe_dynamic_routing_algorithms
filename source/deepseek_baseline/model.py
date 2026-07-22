@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.insert(0, os.path.abspath('..'))
+
 import math
 import warnings
 from typing import List, Optional, Tuple, Union
@@ -34,11 +38,7 @@ from transformers.utils import (
 )
 from transformers.utils.import_utils import is_torch_fx_available
 
-# from .config import DeepseekConfig
-import sys
-import os
-sys.path.insert(0, os.path.abspath('.'))
-from config import DeepseekConfig
+from deepseek_baseline.config import DeepseekConfig
 
 if is_flash_attn_2_available():
     from flash_attn import flash_attn_func, flash_attn_varlen_func
