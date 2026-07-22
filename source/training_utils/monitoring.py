@@ -22,7 +22,8 @@ from deepseekmoe_dynamic_routing_algorithms.source.training_utils.config import 
     WARMUP_STEPS,
     WEIGHT_DECAY,
     EARLY_STOPPING_PATIENCE,
-    EARLY_STOPPING_THRESHOLD
+    EARLY_STOPPING_THRESHOLD,
+    world_size
 )
 
 class ResourceMonitorCallback(TrainerCallback):

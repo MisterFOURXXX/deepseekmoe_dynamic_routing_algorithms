@@ -1,3 +1,5 @@
+import torch
+
 MAX_SEQ_LEN = 256
 PER_DEVICE_BATCH = 8
 GRAD_ACCUM = 8
