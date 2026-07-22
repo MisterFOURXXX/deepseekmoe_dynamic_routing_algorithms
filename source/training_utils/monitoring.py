@@ -12,6 +12,16 @@ import torch
 from torch.utils.data import DataLoader
 from transformers import TrainerCallback
 from torch.utils.flop_counter import FlopCounterMode
+import import_ipynb
+import import_ipynb
+from deepseekmoe_dynamic_routing_algorithms.notebook.01_training_comparison import (
+    PER_DEVICE_BATCH,
+    GRAD_ACCUM,
+    MAX_SEQ_LEN,
+    EARLY_STOPPING_PATIENCE,
+    EARLY_STOPPING_THRESHOLD,
+    MAX_ROUTED_EXPERTS
+)
 
 class ResourceMonitorCallback(TrainerCallback):
     def __init__(self):
