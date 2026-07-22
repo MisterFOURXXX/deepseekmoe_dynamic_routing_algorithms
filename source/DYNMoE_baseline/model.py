@@ -40,8 +40,8 @@ from transformers.utils import (
 from transformers import GenerationConfig
 from transformers.utils.import_utils import is_torch_fx_available
 
-from config import DynMoEConfig
-from adaptive_tuning import AdaptiveExpertTuningCallback
+from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.config import DynMoEConfig
+from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.adaptive_tuning import AdaptiveExpertTuningCallback
 
 # Flash Attention (optional, conditionally imported)
 if is_flash_attn_2_available():

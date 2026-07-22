@@ -5,7 +5,7 @@ os.chdir(repo_path)                 # Move into the repo
 sys.path.insert(0, os.getcwd())     # Ensure the repo root is on sys.path
 
 from transformers import TrainerCallback
-from model import DynMoEForCausalLM
+from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.model import DynMoEForCausalLM
 # from config import DynMoEConfig
 
 ADAPTIVE_AUDIT_STEPS = 10
