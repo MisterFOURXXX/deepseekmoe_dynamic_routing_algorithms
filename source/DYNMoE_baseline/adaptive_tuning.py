@@ -1,5 +1,5 @@
 from transformers import TrainerCallback
-from model import DynMoEForCausalLM
+from DYNMoE_baseline.model import DynMoEForCausalLM
 # from config import DynMoEConfig
 
 ADAPTIVE_AUDIT_STEPS = 10

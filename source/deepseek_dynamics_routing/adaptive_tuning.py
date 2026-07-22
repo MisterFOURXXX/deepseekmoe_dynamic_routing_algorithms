@@ -1,5 +1,5 @@
 from transformers import TrainerCallback
-from model import DeepseekForCausalLM
+from deepseek_dynamics_routing.model import DeepseekForCausalLM
 # from config import DeepseekConfig
 
 ADAPTIVE_AUDIT_STEPS = 10
