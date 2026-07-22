@@ -13,7 +13,7 @@ from torch.utils.data import DataLoader
 from transformers import TrainerCallback
 from torch.utils.flop_counter import FlopCounterMode
 
-from deepseekmoe_dynamic_routing_algorithms.source.config import (
+from deepseekmoe_dynamic_routing_algorithms.source.training_utils.config import (
     MAX_SEQ_LEN,
     PER_DEVICE_BATCH,
     GRAD_ACCUM,
