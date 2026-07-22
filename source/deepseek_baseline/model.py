@@ -1,6 +1,8 @@
-import sys
 import os
-sys.path.insert(0, os.path.abspath('..'))
+import sys
+repo_path = '/kaggle/working/deepseekmoe_dynamic_routing_algorithms'
+os.chdir(repo_path)                 # Move into the repo
+sys.path.insert(0, os.getcwd())     # Ensure the repo root is on sys.path
 
 import math
 import warnings
@@ -38,7 +40,7 @@ from transformers.utils import (
 )
 from transformers.utils.import_utils import is_torch_fx_available
 
-from deepseek_baseline.config import DeepseekConfig
+from source.deepseek_baseline.config import DeepseekConfig
 
 if is_flash_attn_2_available():
     from flash_attn import flash_attn_func, flash_attn_varlen_func

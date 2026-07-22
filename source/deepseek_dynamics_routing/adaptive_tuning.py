@@ -1,5 +1,10 @@
+import os
+import sys
+repo_path = '/kaggle/working/deepseekmoe_dynamic_routing_algorithms'
+os.chdir(repo_path)                 # Move into the repo
+sys.path.insert(0, os.getcwd())     # Ensure the repo root is on sys.path
 from transformers import TrainerCallback
-from deepseek_dynamics_routing.model import DeepseekForCausalLM
+from source.deepseek_dynamics_routing.model import DeepseekForCausalLM
 # from config import DeepseekConfig
 
 ADAPTIVE_AUDIT_STEPS = 10

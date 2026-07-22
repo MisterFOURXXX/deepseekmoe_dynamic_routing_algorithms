@@ -1,9 +1,11 @@
-import sys
 import os
-sys.path.insert(0, os.path.abspath('..'))
+import sys
+repo_path = '/kaggle/working/deepseekmoe_dynamic_routing_algorithms'
+os.chdir(repo_path)                 # Move into the repo
+sys.path.insert(0, os.getcwd())     # Ensure the repo root is on sys.path
 # from .config import DeepseekConfig
-from deepseek_dynamics_routing.config import DeepseekConfig
-from deepseek_dynamics_routing.adaptive_tuning import AdaptiveExpertTuningCallback
+from source.deepseek_dynamics_routing.config import DeepseekConfig
+from source.deepseek_dynamics_routing.adaptive_tuning import AdaptiveExpertTuningCallback
 
 import math
 import warnings
