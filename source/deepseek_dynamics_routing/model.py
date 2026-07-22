@@ -1,11 +1,9 @@
 import os
 import sys
-repo_path = '/kaggle/working/deepseekmoe_dynamic_routing_algorithms'
+repo_path =  ".."
 os.chdir(repo_path)                 # Move into the repo
 sys.path.insert(0, os.getcwd())     # Ensure the repo root is on sys.path
 # from .config import DeepseekConfig
-from source.deepseek_dynamics_routing.config import DeepseekConfig
-from source.deepseek_dynamics_routing.adaptive_tuning import AdaptiveExpertTuningCallback
 
 import math
 import warnings
@@ -42,6 +40,9 @@ from transformers.utils import (
     replace_return_docstrings,
 )
 from transformers.utils.import_utils import is_torch_fx_available
+
+from source.deepseek_dynamics_routing.config import DeepseekConfig
+from source.deepseek_dynamics_routing.adaptive_tuning import AdaptiveExpertTuningCallback
 
 if is_flash_attn_2_available():
     from flash_attn import flash_attn_func, flash_attn_varlen_func

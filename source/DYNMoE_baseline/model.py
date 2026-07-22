@@ -1,8 +1,9 @@
 import os
 import sys
-repo_path = '/kaggle/working/deepseekmoe_dynamic_routing_algorithms'
+repo_path =  ".."
 os.chdir(repo_path)                 # Move into the repo
 sys.path.insert(0, os.getcwd())     # Ensure the repo root is on sys.path
+
 from source.DYNMoE_baseline.config import DynMoEConfig
 from source.DYNMoE_baseline.adaptive_tuning import AdaptiveExpertTuningCallback
 
@@ -41,6 +42,9 @@ from transformers.utils import (
 )
 from transformers import GenerationConfig
 from transformers.utils.import_utils import is_torch_fx_available
+
+from source.DYNMoE_baseline.config import DynMoEConfig
+from source.DYNMoE_baseline.adaptive_tuning import AdaptiveExpertTuningCallback
 
 # Flash Attention (optional, conditionally imported)
 if is_flash_attn_2_available():
