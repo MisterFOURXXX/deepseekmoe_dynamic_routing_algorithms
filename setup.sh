@@ -1,5 +1,6 @@
 #!/bin/bash
 # System dependencies
+sed -i 's/archive.ubuntu.com/mirrors.kernel.org/g' /etc/apt/sources.list
 apt-get update -qq && apt-get install -y libaio-dev -qq
 
 # PyTorch with CUDA
