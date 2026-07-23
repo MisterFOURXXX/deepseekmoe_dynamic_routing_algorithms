@@ -96,6 +96,12 @@ Reference repository: https://huggingface.co/deepseek-ai/deepseek-moe-16b-base/t
 """
 logger = logging.get_logger(__name__)
 
+# GLOBAL DYNMOE CONFIGS (optimised for lower MaxVIO and better efficiency)
+ADAPTIVE_AUDIT_STEPS = 10          # was 10 – prevents premature expert removal, allows bias stabilisation
+MAX_ROUTED_EXPERTS = 6              # keep 6 to limit active parameters (lower FLOPs than 8)
+DYNMOE_THRESHOLD_INIT = -0.04 #-0.02, -0.03, -0.05        # was 0.05 – sigmoid(-0.5)=0.38, ensures experts activate from start
+BIAS_UPDATE_RATE = 0.001             # was 0.001 – stronger bias adjustments to quickly balance load
+
 _CONFIG_FOR_DOC = "DeepseekConfig"
 
 def _get_unpad_data(attention_mask):
