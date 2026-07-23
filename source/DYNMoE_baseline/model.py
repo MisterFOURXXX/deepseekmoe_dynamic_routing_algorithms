@@ -72,6 +72,7 @@ class DynMoERMSNorm(nn.Module):
         return self.weight * hidden_states.to(input_dtype)
 
 # DYNAMIC MoE GATE 
+class DynamicMoEGate(nn.Module):
     """
     Original DYNMoE dynamic top-any gating from the ICLR 2025 paper.
     """
@@ -85,13 +86,14 @@ class DynMoERMSNorm(nn.Module):
         self.weight = nn.Parameter(torch.empty((self.n_routed_experts, self.hidden_size)))
         nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
         
-        self.thresholds = nn.Parameter(torch.full((self.n_routed_experts,), DYNMOE_THRESHOLD_INIT))
+        # Use config values instead of hardcoded globals
+        self.thresholds = nn.Parameter(torch.full((self.n_routed_experts,), config.dynmoe_threshold_init))
         self.biases = nn.Parameter(torch.zeros(self.n_routed_experts), requires_grad=False)
         
         self.register_buffer('routing_records', torch.zeros(self.n_routed_experts))
         self.register_buffer('dropped_embeddings', torch.zeros(self.hidden_size))
         self.audit_counter = 0
-        self.audit_interval = ADAPTIVE_AUDIT_STEPS
+        self.audit_interval = config.adaptive_audit_steps  # Use config instead of global
         
     def forward(self, hidden_states):
         bsz, seq_len, h = hidden_states.shape
@@ -150,7 +152,8 @@ class DynMoERMSNorm(nn.Module):
         avg = total / self.n_routed_experts
         violation = token_counts_per_expert - avg
         with torch.no_grad():
-            self.biases += BIAS_UPDATE_RATE * torch.sign(violation)
+            # Use config value instead of global BIAS_UPDATE_RATE
+            self.biases += self.config.bias_update_rate * torch.sign(violation)
     
     def adaptive_tune(self):
         if self.audit_counter < self.audit_interval:
@@ -255,6 +258,7 @@ class DynMoEMLP(nn.Module):
         return y
 
 # GPT DECODER WITH DYNMoE
+class DynMoEGPTAttention(nn.Module):
     """GPT-style causal attention."""
     def __init__(self, config, layer_idx=None):
         super().__init__()
@@ -325,6 +329,7 @@ class DynMoEGPTBlock(nn.Module):
         self.layer_idx = layer_idx
         self.hidden_size = config.hidden_size
         
+        # These lines now work because DynMoERMSNorm accepts eps
         self.ln1 = DynMoERMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.attention = DynMoEGPTAttention(config)
         self.ln2 = DynMoERMSNorm(config.hidden_size, eps=config.rms_norm_eps)
@@ -540,3 +545,4 @@ class DynMoEForCausalLM(DynMoEPreTrainedModel):
         self.generation_config = GenerationConfig.from_model_config(self.config)
 
         super().save_pretrained(save_directory, **kwargs)
+

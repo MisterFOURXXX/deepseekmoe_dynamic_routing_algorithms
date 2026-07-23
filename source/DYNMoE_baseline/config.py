@@ -1,15 +1,12 @@
+# config.py
 import os
 import sys
 repo_path =  ".."
-os.chdir(repo_path)                 # Move into the repo
-sys.path.insert(0, os.getcwd())     # Ensure the repo root is on sys.path
+os.chdir(repo_path)
+sys.path.insert(0, os.getcwd())
 
 from transformers.utils import logging
 from transformers.configuration_utils import PretrainedConfig
-
-#import math
-#import warnings
-#from typing import List, Optional, Tuple, Union
 
 # GLOBAL DYNMoE CONFIGS 
 ADAPTIVE_AUDIT_STEPS = 10
@@ -44,12 +41,16 @@ class DynMoEConfig(PretrainedConfig):
         # DYNMoE Specific
         num_experts=8,
         max_expert_num=16,
-        # top_k removed – not used by the dynamic gate
         replace_layers=None,
         moe_intermediate_size=1024,
         n_shared_experts=2,
         moe_aux_loss_weight=0.01,
         adaptive_experts=True,
+        
+        # DYNMoE Gate / Routing hyperparameters (NEW - add these)
+        adaptive_audit_steps=10,
+        dynmoe_threshold_init=-0.08,
+        bias_update_rate=0.001,
         
         # For compatibility
         is_decoder=True,
@@ -80,12 +81,16 @@ class DynMoEConfig(PretrainedConfig):
         # DYNMoE params
         self.num_experts = num_experts
         self.max_expert_num = max_expert_num
-        # self.top_k removed
         self.replace_layers = replace_layers or list(range(6, 12))
         self.moe_intermediate_size = moe_intermediate_size
         self.n_shared_experts = n_shared_experts
         self.moe_aux_loss_weight = moe_aux_loss_weight
         self.adaptive_experts = adaptive_experts
+        
+        # DYNMoE gate/routing hyperparameters (NEW)
+        self.adaptive_audit_steps = adaptive_audit_steps
+        self.dynmoe_threshold_init = dynmoe_threshold_init
+        self.bias_update_rate = bias_update_rate
         
         # For compatibility
         self.is_decoder = is_decoder
@@ -96,6 +101,6 @@ class DynMoEConfig(PretrainedConfig):
         self.tie_word_embeddings = tie_word_embeddings
         self.rms_norm_eps = rms_norm_eps
         
-        # For MoE compatibility (not used in dynamic gating)
+        # For MoE compatibility
         self.n_routed_experts = num_experts
         self._attn_implementation = "eager"
