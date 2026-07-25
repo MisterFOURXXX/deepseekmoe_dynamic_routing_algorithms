@@ -1,8 +1,4 @@
 import os
-from transformers import AutoTokenizer
-from source.deepseek_baseline.model import DeepseekForCausalLM
-
-import os
 import json
 from transformers import AutoTokenizer
 from source.deepseek_baseline.model import DeepseekForCausalLM as BaselineModel

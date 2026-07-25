@@ -1,15 +1,42 @@
 import os
-import sys
-repo_path =  ".."
-os.chdir(repo_path)                 # Move into the repo
-sys.path.insert(0, os.getcwd())     # Ensure the repo root is on sys.path
-
+import json
 from transformers import AutoTokenizer
-from source.deepseek_baseline.model import DeepseekForCausalLM
+from source.deepseek_baseline.model import DeepseekForCausalLM as BaselineModel
+from source.deepseek_dynamics_routing.model import DeepseekForCausalLM as RoutingModel
+from source.DYNMoE_baseline.model import DynMoEForCausalLM as DynMoEModel
 
 def load_model_and_tokenizer(model_path):
-    tokenizer = AutoTokenizer.from_pretrained("deepseek-ai/deepseek-moe-16b-base", use_fast=True, padding_side="left")
+    """
+    Load the correct model class and its tokenizer from a saved checkpoint.
+    
+    Args:
+        model_path (str): Path to the saved model directory (contains config.json).
+    
+    Returns:
+        model: The loaded PyTorch model.
+        tokenizer: The corresponding tokenizer.
+    """
+    # Load config to determine model type
+    config_path = os.path.join(model_path, "config.json")
+    with open(config_path, "r") as f:
+        config_dict = json.load(f)
+
+    # Determine which model class to use
+    if config_dict.get("model_type") == "dynmoe":
+        ModelClass = DynMoEModel
+    else:
+        # model_type is "deepseek" – distinguish baseline from routing
+        if "max_routed_experts" in config_dict:
+            ModelClass = RoutingModel
+        else:
+            ModelClass = BaselineModel
+
+    # Load model and tokenizer from the same directory
+    model = ModelClass.from_pretrained(model_path)
+    tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True)
+
+    # Ensure padding token is set
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
-    model = DeepseekForCausalLM.from_pretrained(model_path)
+
     return model, tokenizer
