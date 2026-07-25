@@ -347,10 +347,6 @@ class MoEGate(nn.Module):
 
 
 class AddAuxiliaryLoss(torch.autograd.Function):
-    """
-    The trick function of adding auxiliary (aux) loss, 
-    which includes the gradient of the aux loss during backpropagation.
-    """
     @staticmethod
     def forward(ctx, x, loss):
         assert loss.numel() == 1
@@ -362,7 +358,8 @@ class AddAuxiliaryLoss(torch.autograd.Function):
     def backward(ctx, grad_output):
         grad_loss = None
         if ctx.required_aux_loss:
-            grad_loss = torch.ones(1, dtype=ctx.dtype, device=grad_output.device)
+            # Return a scalar (0-dim) tensor to avoid the gather warning
+            grad_loss = torch.tensor(1.0, dtype=ctx.dtype, device=grad_output.device)
         return grad_output, grad_loss
     
     

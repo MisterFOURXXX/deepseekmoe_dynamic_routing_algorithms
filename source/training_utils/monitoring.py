@@ -227,7 +227,7 @@ class MoEMetricsCallback(TrainerCallback):
                 val_hooks.append(hook)
 
         # Evaluation loop with FLOP counter
-        flop_counter = FlopCounterMode(unwrapped, display=False)
+        flop_counter = FlopCounterMode(model=unwrapped, display=False)
 
         total_loss = 0.0
         total_valid_tokens = 0
