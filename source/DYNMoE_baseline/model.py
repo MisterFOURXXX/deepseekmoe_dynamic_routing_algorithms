@@ -73,6 +73,13 @@ from transformers import GenerationConfig
 
 from .config import DynMoEConfig
 
+from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.config import (
+    ADAPTIVE_AUDIT_STEPS,
+    MAX_ROUTED_EXPERTS,
+    DYNMOE_THRESHOLD_INIT,
+    BIAS_UPDATE_RATE,
+)
+
 logger = logging.get_logger(__name__)
 
 # DYNMoE RMS NORM 
