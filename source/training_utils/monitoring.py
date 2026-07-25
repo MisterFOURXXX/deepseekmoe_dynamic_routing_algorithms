@@ -18,15 +18,12 @@ from deepseekmoe_dynamic_routing_algorithms.source.training_utils.config import 
     MAX_SEQ_LEN,
     PER_DEVICE_BATCH,
     GRAD_ACCUM,
-    LEARNING_RATE,
-    NUM_EPOCHS,
-    WARMUP_STEPS,
-    WEIGHT_DECAY,
     EARLY_STOPPING_PATIENCE,
     EARLY_STOPPING_THRESHOLD,
     MAX_ROUTED_EXPERTS,
     world_size,
 )
+
 
 class ResourceMonitorCallback(TrainerCallback):
     def __init__(self):
@@ -80,7 +77,6 @@ class ResourceMonitorCallback(TrainerCallback):
             lines = [l.strip() for l in result.stdout.strip().split("\n") if l.strip()]
             if lines:
                 gpu_mem_gb = np.mean([float(l.split(", ")[1]) for l in lines]) / 1024
-                # Use average over steps if we have samples, otherwise fallback to current
                 if self.gpu_util_samples:
                     gpu_util = np.mean(self.gpu_util_samples)
                 else:

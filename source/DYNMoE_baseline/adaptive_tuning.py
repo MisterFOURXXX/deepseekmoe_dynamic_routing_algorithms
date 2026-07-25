@@ -10,8 +10,12 @@ from transformers import TrainerCallback
 ADAPTIVE_AUDIT_STEPS = 10
 
 class AdaptiveExpertTuningCallback(TrainerCallback):
-    """Callback for adaptive expert tuning during training."""
-    def __init__(self, audit_steps: int = ADAPTIVE_AUDIT_STEPS):
+    """
+    Callback that triggers adaptive tuning on all modules that have an
+    `adaptive_tune()` method (e.g., DynamicMoEGate).  Works with any model
+    structure by scanning all submodules.
+    """
+    def __init__(self, audit_steps: int = 10):
         self.audit_steps = audit_steps
         self.global_step = 0
 
