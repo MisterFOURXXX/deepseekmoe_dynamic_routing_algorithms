@@ -207,7 +207,8 @@ class AddAuxiliaryLoss(torch.autograd.Function):
     def backward(ctx, grad_output):
         grad_loss = None
         if ctx.required_aux_loss:
-            grad_loss = torch.tensor(1.0, dtype=ctx.dtype, device=grad_output.device)
+            # Return a 1‑element tensor to avoid the gather warning
+            grad_loss = torch.tensor([1.0], dtype=ctx.dtype, device=grad_output.device)
         return grad_output, grad_loss
 
 # DYNMoE MLP 
