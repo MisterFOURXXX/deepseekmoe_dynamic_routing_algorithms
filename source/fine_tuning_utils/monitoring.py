@@ -18,6 +18,7 @@ from deepseekmoe_dynamic_routing_algorithms.source.fine_tuning_utils.config impo
     WEIGHT_DECAY,
     EARLY_STOPPING_PATIENCE,
     EARLY_STOPPING_THRESHOLD,
+    MAX_ROUTED_EXPERTS,
     world_size
 )
 
