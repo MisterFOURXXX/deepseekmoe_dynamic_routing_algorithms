@@ -11,9 +11,7 @@ ADAPTIVE_AUDIT_STEPS = 10
 
 class AdaptiveExpertTuningCallback(TrainerCallback):
     """
-    Callback that triggers adaptive tuning on all modules that have an
-    `adaptive_tune()` method (e.g., DynamicMoEGate).  Works with any model
-    structure by scanning all submodules.
+    Calls adaptive_tune() on all DynamicMoEGate modules every N steps.
     """
     def __init__(self, audit_steps: int = 10):
         self.audit_steps = audit_steps
@@ -29,6 +27,7 @@ class AdaptiveExpertTuningCallback(TrainerCallback):
         tuned_count = 0
         for module in unwrapped.modules():
             if hasattr(module, 'adaptive_tune'):
+                # This will also update the gate's internal state
                 module.adaptive_tune()
                 tuned_count += 1
         if tuned_count > 0:

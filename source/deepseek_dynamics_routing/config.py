@@ -122,10 +122,9 @@ class DeepseekConfig(PretrainedConfig):
     >>> # Accessing the model configuration
     >>> configuration = model.config
     ```"""
-
     model_type = "deepseek"
     keys_to_ignore_at_inference = ["past_key_values"]
-    
+
     def __init__(
         self,
         vocab_size=102400,
@@ -136,14 +135,14 @@ class DeepseekConfig(PretrainedConfig):
         num_attention_heads=32,
         num_key_value_heads=32,
         n_shared_experts=2,
-        n_routed_experts=None,                 ########
-        num_experts_per_tok=2,                 # Will be ignore in MoEGate.forward() using K_r -> to be competible to compile with DeepSeekMoE compiler
-        moe_layer_freq = 1,
-        first_k_dense_replace = 0,
-        norm_topk_prob = False,
-        scoring_func = 'softmax',
-        aux_loss_alpha = 0.001,
-        seq_aux = True,
+        n_routed_experts=None,          # if None, will be set to MAX_ROUTED_EXPERTS
+        num_experts_per_tok=2,            # kept for compatibility (not used), Will be ignore in MoEGate.forward() using K_r -> to be competible to compile with DeepSeekMoE compiler
+        moe_layer_freq=1,
+        first_k_dense_replace=0,
+        norm_topk_prob=False,
+        scoring_func="softmax",
+        aux_loss_alpha=0.001,
+        seq_aux=True,
         hidden_act="silu",
         max_position_embeddings=2048,
         initializer_range=0.02,
@@ -158,44 +157,11 @@ class DeepseekConfig(PretrainedConfig):
         rope_scaling=None,
         attention_bias=False,
         attention_dropout=0.0,
+        max_routed_experts=MAX_ROUTED_EXPERTS,            # upper bound for adaptive expert count
+        adaptive_audit_steps=ADAPTIVE_AUDIT_STEPS,          # frequency of adaptive tuning (steps)
+        dynmoe_threshold_init=DYNMOE_THRESHOLD_INIT,      # initial value for thresholds G_j
         **kwargs,
     ):
-        self.vocab_size = vocab_size
-        self.max_position_embeddings = max_position_embeddings
-        self.hidden_size = hidden_size
-        self.intermediate_size = intermediate_size
-        self.moe_intermediate_size = moe_intermediate_size
-        self.num_hidden_layers = num_hidden_layers
-        self.num_attention_heads = num_attention_heads
-        self.n_shared_experts = n_shared_experts
-        if n_routed_experts is None:
-            n_routed_experts = MAX_ROUTED_EXPERTS
-        self.n_routed_experts = n_routed_experts
-        self.num_experts_per_tok = num_experts_per_tok
-        self.moe_layer_freq = moe_layer_freq
-        self.first_k_dense_replace = first_k_dense_replace
-        self.norm_topk_prob = norm_topk_prob
-        self.scoring_func = scoring_func
-        self.aux_loss_alpha = aux_loss_alpha
-        self.seq_aux = seq_aux
-        # for backward compatibility
-        if num_key_value_heads is None:
-            num_key_value_heads = num_attention_heads
-        self.num_key_value_heads = num_key_value_heads
-        self.hidden_act = hidden_act
-        self.initializer_range = initializer_range
-        self.rms_norm_eps = rms_norm_eps
-        self.pretraining_tp = pretraining_tp
-        self.use_cache = use_cache
-        self.rope_theta = rope_theta
-        self.rope_scaling = rope_scaling
-        self._rope_scaling_validation()
-        self.attention_bias = attention_bias
-        self.attention_dropout = attention_dropout
-        
-        # DYNMoE specific parameters
-        self.max_routed_experts = MAX_ROUTED_EXPERTS
-        
         super().__init__(
             pad_token_id=pad_token_id,
             bos_token_id=bos_token_id,
@@ -203,6 +169,38 @@ class DeepseekConfig(PretrainedConfig):
             tie_word_embeddings=tie_word_embeddings,
             **kwargs,
         )
+        self.vocab_size = vocab_size
+        self.hidden_size = hidden_size
+        self.intermediate_size = intermediate_size
+        self.moe_intermediate_size = moe_intermediate_size
+        self.num_hidden_layers = num_hidden_layers
+        self.num_attention_heads = num_attention_heads
+        self.num_key_value_heads = num_key_value_heads if num_key_value_heads is not None else num_attention_heads
+        self.n_shared_experts = n_shared_experts
+        self.n_routed_experts = n_routed_experts if n_routed_experts is not None else max_routed_experts
+        self.num_experts_per_tok = num_experts_per_tok
+        self.moe_layer_freq = moe_layer_freq
+        self.first_k_dense_replace = first_k_dense_replace
+        self.norm_topk_prob = norm_topk_prob
+        self.scoring_func = scoring_func
+        self.aux_loss_alpha = aux_loss_alpha
+        self.seq_aux = seq_aux
+        self.hidden_act = hidden_act
+        self.max_position_embeddings = max_position_embeddings
+        self.initializer_range = initializer_range
+        self.rms_norm_eps = rms_norm_eps
+        self.pretraining_tp = pretraining_tp
+        self.use_cache = use_cache
+        self.rope_theta = rope_theta
+        self.rope_scaling = rope_scaling
+        self.attention_bias = attention_bias
+        self.attention_dropout = attention_dropout
+        self.max_routed_experts = max_routed_experts
+        self.adaptive_audit_steps = adaptive_audit_steps
+        self.dynmoe_threshold_init = dynmoe_threshold_init
+
+        self._rope_scaling_validation()
+
     def _rope_scaling_validation(self):
         """
         Validate the `rope_scaling` configuration.

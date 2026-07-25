@@ -15,17 +15,16 @@ MAX_ROUTED_EXPERTS = 6
 DYNMOE_THRESHOLD_INIT = -0.08
 BIAS_UPDATE_RATE = 0.001
 
-# DYNMoE CONFIG
 class DynMoEConfig(PretrainedConfig):
     """
-    Configuration class for DYNMoE models.
-    Supports GPT-like decoder backbones.
+    Configuration class for DYNMoE models (GPT‑like decoder backbone).
+    Follows the ICLR 2025 paper.
     """
     model_type = "dynmoe"
-    
+
     def __init__(
         self,
-        # Base architecture (GPT style)
+        # Base GPT‑2 style
         vocab_size=50257,
         hidden_size=1024,
         num_hidden_layers=12,
@@ -38,22 +37,18 @@ class DynMoEConfig(PretrainedConfig):
         pad_token_id=50256,
         bos_token_id=50256,
         eos_token_id=50256,
-        
-        # DYNMoE Specific
-        num_experts=8,
-        max_expert_num=16,
-        replace_layers=None,
-        moe_intermediate_size=1024,
-        n_shared_experts=2,
-        moe_aux_loss_weight=0.01,
-        adaptive_experts=True,
-        
-        # DYNMoE Gate / Routing hyperparameters (NEW - add these)
-        adaptive_audit_steps=10,
-        dynmoe_threshold_init=-0.08,
-        bias_update_rate=0.001,
-        
-        # For compatibility
+
+        # DYNMoE specific
+        num_experts=8,                    # initial number of experts (K)
+        max_expert_num=16,                # maximum allowed experts
+        replace_layers=None,              # list of layer indices to replace with MoE
+        moe_intermediate_size=1024,       # size of each expert's intermediate layer
+        n_shared_experts=0,               # shared experts (0 by default, not in paper)
+        moe_aux_loss_weight=0.01,         # weight for the auxiliary loss
+        adaptive_audit_steps=10,          # how often to run adaptive tuning (every N steps)
+        dynmoe_threshold_init=-0.08,      # initial value for per‑expert thresholds G
+
+        # Compatibility flags
         is_decoder=True,
         use_cache=True,
         attention_bias=True,
@@ -61,11 +56,11 @@ class DynMoEConfig(PretrainedConfig):
         pretraining_tp=1,
         tie_word_embeddings=True,
         rms_norm_eps=1e-5,
-        
+        _attn_implementation="eager",
         **kwargs,
     ):
         super().__init__(pad_token_id=pad_token_id, **kwargs)
-        
+
         self.vocab_size = vocab_size
         self.hidden_size = hidden_size
         self.num_hidden_layers = num_hidden_layers
@@ -78,22 +73,18 @@ class DynMoEConfig(PretrainedConfig):
         self.pad_token_id = pad_token_id
         self.bos_token_id = bos_token_id
         self.eos_token_id = eos_token_id
-        
-        # DYNMoE params
+
+        # DYNMoE parameters
         self.num_experts = num_experts
         self.max_expert_num = max_expert_num
-        self.replace_layers = replace_layers or list(range(6, 12))
+        self.replace_layers = replace_layers if replace_layers is not None else list(range(6, 12))
         self.moe_intermediate_size = moe_intermediate_size
         self.n_shared_experts = n_shared_experts
         self.moe_aux_loss_weight = moe_aux_loss_weight
-        self.adaptive_experts = adaptive_experts
-        
-        # DYNMoE gate/routing hyperparameters (NEW)
         self.adaptive_audit_steps = adaptive_audit_steps
         self.dynmoe_threshold_init = dynmoe_threshold_init
-        self.bias_update_rate = bias_update_rate
-        
-        # For compatibility
+
+        # Compatibility
         self.is_decoder = is_decoder
         self.use_cache = use_cache
         self.attention_bias = attention_bias
@@ -101,7 +92,7 @@ class DynMoEConfig(PretrainedConfig):
         self.pretraining_tp = pretraining_tp
         self.tie_word_embeddings = tie_word_embeddings
         self.rms_norm_eps = rms_norm_eps
-        
-        # For MoE compatibility
+        self._attn_implementation = _attn_implementation
+
+        # For MoE compatibility (not used in dynamic gating)
         self.n_routed_experts = num_experts
-        self._attn_implementation = "eager"

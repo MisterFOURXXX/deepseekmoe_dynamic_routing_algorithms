@@ -109,16 +109,13 @@ def _get_unpad_data(attention_mask):
     indices = torch.nonzero(attention_mask.flatten(), as_tuple=False).flatten()
     max_seqlen_in_batch = seqlens_in_batch.max().item()
     cu_seqlens = F.pad(torch.cumsum(seqlens_in_batch, dim=0, dtype=torch.torch.int32), (1, 0))
-    return (
-        indices,
-        cu_seqlens,
-        max_seqlen_in_batch,
-    )
+    return (indices, cu_seqlens, max_seqlen_in_batch)
 
 
 def _expand_mask(mask: torch.Tensor, dtype: torch.dtype, tgt_len: Optional[int] = None):
     warnings.warn(
-        "Calling `transformers.models.Deepseek.modeling_Deepseek._prepare_4d_attention_mask` is deprecated and will be removed in v4.37. Use `transformers.modeling_attn_mask_utils._prepare_4d_attention_mask"
+        "Calling `transformers.models.Deepseek.modeling_Deepseek._prepare_4d_attention_mask` is deprecated "
+        "and will be removed in v4.37. Use `transformers.modeling_attn_mask_utils._prepare_4d_attention_mask`"
     )
     return _prepare_4d_attention_mask(mask=mask, dtype=dtype, tgt_len=tgt_len)
 
@@ -127,11 +124,13 @@ def _make_causal_mask(
     input_ids_shape: torch.Size, dtype: torch.dtype, device: torch.device, past_key_values_length: int = 0
 ):
     warnings.warn(
-        "Calling `transformers.models.Deepseek.modeling_Deepseek._make_causal_mask` is deprecated and will be removed in v4.37. Use `transformers.models.Deepseek.modeling_Deepseek.AttentionMaskConverter._make_causal_mask"
+        "Calling `transformers.models.Deepseek.modeling_Deepseek._make_causal_mask` is deprecated "
+        "and will be removed in v4.37. Use `transformers.models.Deepseek.modeling_Deepseek.AttentionMaskConverter._make_causal_mask`"
     )
     return AttentionMaskConverter._make_causal_mask(
         input_ids_shape=input_ids_shape, dtype=dtype, device=device, past_key_values_length=past_key_values_length
     )
+
 
 
 class DeepseekRMSNorm(nn.Module):
@@ -157,35 +156,27 @@ ALL_LAYERNORM_LAYERS.append(DeepseekRMSNorm)
 class DeepseekRotaryEmbedding(nn.Module):
     def __init__(self, dim, max_position_embeddings=2048, base=10000, device=None):
         super().__init__()
-
         self.dim = dim
         self.max_position_embeddings = max_position_embeddings
         self.base = base
         inv_freq = 1.0 / (self.base ** (torch.arange(0, self.dim, 2).float().to(device) / self.dim))
         self.register_buffer("inv_freq", inv_freq, persistent=False)
-
-        # Build here to make `torch.jit.trace` work.
         self._set_cos_sin_cache(
             seq_len=max_position_embeddings, device=self.inv_freq.device, dtype=torch.get_default_dtype()
         )
         self.max_seq_len_cached = None
 
-
     def _set_cos_sin_cache(self, seq_len, device, dtype):
         self.max_seq_len_cached = seq_len
         t = torch.arange(self.max_seq_len_cached, device=device, dtype=self.inv_freq.dtype)
-
         freqs = torch.outer(t, self.inv_freq.to(t.device))
-        # Different from paper, but it uses a different permutation in order to obtain the same calculation
         emb = torch.cat((freqs, freqs), dim=-1)
         self.register_buffer("cos_cached", emb.cos().to(dtype), persistent=False)
         self.register_buffer("sin_cached", emb.sin().to(dtype), persistent=False)
 
     def forward(self, x, seq_len=None):
-        # x: [bs, num_attention_heads, seq_len, head_size]
         if self.max_seq_len_cached is None or seq_len > self.max_seq_len_cached:
             self._set_cos_sin_cache(seq_len=seq_len, device=x.device, dtype=x.dtype)
-
         return (
             self.cos_cached[:seq_len].to(dtype=x.dtype),
             self.sin_cached[:seq_len].to(dtype=x.dtype),
@@ -204,9 +195,7 @@ class DeepseekLinearScalingRotaryEmbedding(DeepseekRotaryEmbedding):
         self.max_seq_len_cached = seq_len
         t = torch.arange(self.max_seq_len_cached, device=device, dtype=self.inv_freq.dtype)
         t = t / self.scaling_factor
-
         freqs = torch.outer(t, self.inv_freq)
-        # Different from paper, but it uses a different permutation in order to obtain the same calculation
         emb = torch.cat((freqs, freqs), dim=-1)
         self.register_buffer("cos_cached", emb.cos().to(dtype), persistent=False)
         self.register_buffer("sin_cached", emb.sin().to(dtype), persistent=False)
@@ -222,18 +211,14 @@ class DeepseekDynamicNTKScalingRotaryEmbedding(DeepseekRotaryEmbedding):
 
     def _set_cos_sin_cache(self, seq_len, device, dtype):
         self.max_seq_len_cached = seq_len
-
         if seq_len > self.max_position_embeddings:
             base = self.base * (
                 (self.scaling_factor * seq_len / self.max_position_embeddings) - (self.scaling_factor - 1)
             ) ** (self.dim / (self.dim - 2))
             inv_freq = 1.0 / (base ** (torch.arange(0, self.dim, 2).float().to(device) / self.dim))
             self.register_buffer("inv_freq", inv_freq, persistent=False)
-
         t = torch.arange(self.max_seq_len_cached, device=device, dtype=self.inv_freq.dtype)
-
         freqs = torch.outer(t, self.inv_freq)
-        # Different from paper, but it uses a different permutation in order to obtain the same calculation
         emb = torch.cat((freqs, freqs), dim=-1)
         self.register_buffer("cos_cached", emb.cos().to(dtype), persistent=False)
         self.register_buffer("sin_cached", emb.sin().to(dtype), persistent=False)
@@ -276,7 +261,7 @@ def apply_rotary_pos_emb(q, k, cos, sin, position_ids, unsqueeze_dim=1):
 
 
 class DeepseekMLP(nn.Module):
-    def __init__(self, config, hidden_size = None, intermediate_size = None):
+    def __init__(self, config, hidden_size=None, intermediate_size=None):
         super().__init__()
         self.config = config
         self.hidden_size = config.hidden_size if hidden_size is None else hidden_size
@@ -306,16 +291,12 @@ class DeepseekMLP(nn.Module):
             down_proj = sum(down_proj)
         else:
             down_proj = self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
-
         return down_proj
+
 
 
 # MoEGate (Top-Any + Adaptive) ####################################################################
 class MoEGate(nn.Module):
-    """
-    DYNMoE Top‑Any Gating with Loss‑Free Balancing.
-    Replaces the fixed top‑k router of DeepSeekMoE.
-    """
     def __init__(self, config):
         super().__init__()
         self.config = config
@@ -326,59 +307,50 @@ class MoEGate(nn.Module):
         self.weight = nn.Parameter(torch.empty((self.n_routed_experts, self.hidden_size)))
         nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
 
-        # Trainable per‑expert thresholds G_j (sigmoid space)
-        self.thresholds = nn.Parameter(torch.full((self.n_routed_experts,), DYNMOE_THRESHOLD_INIT))
+        # Per‑expert trainable thresholds G_j (in sigmoid space)
+        self.thresholds = nn.Parameter(torch.full((self.n_routed_experts,), config.dynmoe_threshold_init))
 
-        # Loss‑Free Balancing: per‑expert biases b_i (initialised to 0)
-        self.biases = nn.Parameter(torch.zeros(self.n_routed_experts), requires_grad=False)
-
-        # Adaptive tuning records
-        self.register_buffer('routing_records', torch.zeros(self.n_routed_experts))  # R_E
-        self.register_buffer('dropped_embeddings', torch.zeros(self.hidden_size))    # R_S
+        # Routing records for adaptive tuning (R_E and R_S)
+        self.register_buffer("routing_records", torch.zeros(self.n_routed_experts))   # R_E
+        self.register_buffer("dropped_embeddings", torch.zeros(self.hidden_size))     # R_S
         self.audit_counter = 0
-        self.audit_interval = ADAPTIVE_AUDIT_STEPS
+        self.audit_interval = config.adaptive_audit_steps
 
     def forward(self, hidden_states):
-        bsz, seq_len, h = hidden_states.shape
-        x = hidden_states.view(-1, h)
+        bsz, seq_len, _ = hidden_states.shape
+        x = hidden_states.view(-1, self.hidden_size)   # [N, d]
 
-        # Affinity computation (cosine similarity) – Eq. (2) in the approach
+        # Affinity computation: cosine similarity (Eq. 3 in approach)
         norm_x = F.normalize(x, p=2, dim=-1)
         norm_w = F.normalize(self.weight, p=2, dim=-1)
-        s = torch.matmul(norm_x, norm_w.T)                     # raw affinity scores s_j
+        s = torch.matmul(norm_x, norm_w.T)             # [N, K]
 
-        # Apply expert biases (Loss‑Free Balancing) – Eq. (3) in the paper
-        biased_s = s + self.biases
+        # Gating decision with straight‑through estimator (Eq. 4)
+        raw = torch.sigmoid(s) - torch.sigmoid(self.thresholds)  # [N, K]
+        g = torch.sign(raw)
+        g = (g > 0).float()                            # binary activation
 
-        # Gating decision using biased scores – Eq. (3) in the approach
-        g = torch.sign(torch.sigmoid(biased_s) - torch.sigmoid(self.thresholds))
-        g = (g > 0).float()                                    # binary activation g_j
-
-        # Dynamic activation count k_r – Eq. (4) in the approach
+        # Dynamic activation count k_r (Eq. 5)
         k_r = g.sum(dim=-1, keepdim=True).clamp(min=1e-8)
 
-        # Straight‑through estimator (gradients pass through sigmoid)
         if self.training:
-            soft_g = torch.sigmoid(biased_s) - torch.sigmoid(self.thresholds)
-            g = g + (soft_g - soft_g.detach())
+            # Straight‑through: pass gradient through sigmoid part
+            g = g + (raw - raw.detach())
 
+        # Unweighted average weight per expert (binary / k_r)
         topk_weight = g / k_r
 
-        # For compatibility: indices of activated experts (not used in unweighted average)
+        # For compatibility with the original DeepseekMoE forward (not used)
         topk_idx = torch.arange(self.n_routed_experts, device=g.device).unsqueeze(0).expand_as(g)
 
-        # === Test‑time safeguard (fallback to top‑1 when k_r == 0) ===
+        # Test‑time safeguard: if no expert activated, use top‑1 (Eq. 7)
         if not self.training:
-            # Check if any token has zero activated experts
             zero_mask = (k_r.squeeze(-1) == 0)
             if zero_mask.any():
-                # Find the expert with highest raw affinity score for those tokens
-                max_affinity_idx = torch.argmax(s, dim=-1)  # [N,]
-                # Override gating: set g to 1 for the top‑1 expert only
+                max_affinity_idx = torch.argmax(s, dim=-1)   # [N,]
                 for i in zero_mask.nonzero(as_tuple=True)[0]:
                     g[i, :] = 0
                     g[i, max_affinity_idx[i]] = 1.0
-                # Recompute k_r and weights
                 k_r = g.sum(dim=-1, keepdim=True).clamp(min=1e-8)
                 topk_weight = g / k_r
 
@@ -394,68 +366,55 @@ class MoEGate(nn.Module):
                     dropped_emb = x[dropped_mask].mean(dim=0)
                     self.dropped_embeddings += dropped_emb
 
+        # Sparse‑and‑Simple auxiliary loss (Eq. 8)
         aux_loss = self._sparse_simple_loss() if self.training else None
         return topk_idx, topk_weight, aux_loss
 
     def _sparse_simple_loss(self):
-        """
-        Sparse‑and‑Simple Auxiliary Loss (replaces DeepSeekMoE’s load balancing losses)
-        L_aux = ||W_g^T W_g - I||_2 + (1/(mN-K_s)) * Σ||w_{g,j}||_2
-        """
         Wg = self.weight
         gram = torch.matmul(Wg, Wg.T)
-        # Diversity term: Frobenius distance to identity
-        diversity = torch.norm(gram - torch.eye(self.n_routed_experts, device=Wg.device), p='fro') ** 2
-        # Simplicity term: average L2 norm of gating vectors
+        diversity = torch.norm(gram - torch.eye(self.n_routed_experts, device=Wg.device), p="fro") ** 2
         simplicity = torch.mean(torch.norm(Wg, p=2, dim=1))
         return diversity + simplicity
 
-    def update_biases(self, token_counts_per_expert):
-        """
-        Loss‑Free Balancing bias update (Algorithm 1).
-        b_i = b_i + u * sign(e_i)   where e_i = c_i - avg(c_i)
-        """
-        if not self.training:
-            return
-        total = token_counts_per_expert.sum().float()
-        avg = total / self.n_routed_experts
-        violation = token_counts_per_expert - avg
-        with torch.no_grad():
-            self.biases += BIAS_UPDATE_RATE * torch.sign(violation)
-
     def adaptive_tune(self):
         """
-        Adaptive expert tuning: remove dead experts (R_E[j]==0) and add new ones (R_S != 0).
+        Adaptive expert tuning: remove dead experts (R_E[j]==0) and add a new expert if neglected patterns exist (R_S != 0).
         """
         if self.audit_counter < self.audit_interval:
             return
 
         with torch.no_grad():
-            # Remove experts with zero activations (dead experts)
+            # ---- Remove dead experts (keep at least 2) ----
             if self.n_routed_experts > 2:
                 active = self.routing_records > 0
                 if not active.all():
                     inactive_idx = (~active).nonzero(as_tuple=True)[0]
                     if len(inactive_idx) > 0:
                         keep = torch.ones(self.n_routed_experts, dtype=torch.bool, device=self.weight.device)
-                        keep[inactive_idx[0]] = False
+                        keep[inactive_idx] = False
+                        # Ensure at least 2 experts remain
+                        if keep.sum().item() < 2:
+                            # Keep the top 2 by activation count (fallback)
+                            _, top2 = torch.topk(self.routing_records, k=2)
+                            keep = torch.zeros(self.n_routed_experts, dtype=torch.bool, device=self.weight.device)
+                            keep[top2] = True
                         self.weight.data = self.weight.data[keep]
                         self.thresholds.data = self.thresholds.data[keep]
-                        self.biases.data = self.biases.data[keep]
                         self.routing_records = self.routing_records[keep]
                         self.n_routed_experts = int(keep.sum().item())
-                        print(f"[DYNMoE Adaptive] Removed expert → {self.n_routed_experts} routed experts")
+                        print(f"[DYNMoE] Removed dead experts → {self.n_routed_experts} routed experts")
 
-            # Add new expert for neglected patterns (R_S)
+            # ---- Add new expert if dropped_embeddings is non‑zero ----
             if torch.norm(self.dropped_embeddings) > 1e-6 and self.n_routed_experts < self.config.max_routed_experts:
                 new_w = F.normalize(self.dropped_embeddings.unsqueeze(0), p=2, dim=-1)
                 self.weight.data = torch.cat([self.weight.data, new_w], dim=0)
                 self.thresholds.data = torch.cat([self.thresholds.data, torch.zeros(1, device=self.thresholds.device)])
-                self.biases.data = torch.cat([self.biases.data, torch.zeros(1, device=self.biases.device)])
                 self.routing_records = torch.cat([self.routing_records, torch.zeros(1, device=self.routing_records.device)])
                 self.n_routed_experts += 1
-                print(f"[DYNMoE Adaptive] Added new expert → {self.n_routed_experts} routed experts")
+                print(f"[DYNMoE] Added new expert → {self.n_routed_experts} routed experts")
 
+            # Reset records
             self.routing_records.zero_()
             self.dropped_embeddings.zero_()
             self.audit_counter = 0
@@ -473,39 +432,52 @@ class AddAuxiliaryLoss(torch.autograd.Function):
     def backward(ctx, grad_output):
         grad_loss = None
         if ctx.required_aux_loss:
-            # Return a 1‑element tensor to avoid the gather warning
-            grad_loss = torch.tensor([1.0], dtype=ctx.dtype, device=grad_output.device)
+            grad_loss = torch.ones(1, dtype=ctx.dtype, device=grad_output.device)
         return grad_output, grad_loss
     
 # REVISED DeepseekMoE #####################################
 class DeepseekMoE(nn.Module):
+    """
+    A mixed expert module containing shared experts (unchanged) and routed experts with
+    DYNMoE top‑any gating, Sparse‑and‑Simple auxiliary loss, and adaptive expert tuning.
+    """
     def __init__(self, config):
         super().__init__()
         self.config = config
-        self.num_experts_per_tok = config.num_experts_per_tok
+        self.num_experts_per_tok = config.num_experts_per_tok   # kept for compatibility
         self.n_routed_experts = config.n_routed_experts
         self.n_shared_experts = config.n_shared_experts
 
+        # Routed experts (fine‑grained)
         self.experts = nn.ModuleList([
             DeepseekMLP(config, intermediate_size=config.moe_intermediate_size)
-            for _ in range(config.n_routed_experts)
+            for _ in range(self.n_routed_experts)
         ])
         self.gate = MoEGate(config)
+
+        # Shared experts (always active – unchanged)
         if self.n_shared_experts is not None:
             inter_size = config.moe_intermediate_size * self.n_shared_experts
             self.shared_experts = DeepseekMLP(config, intermediate_size=inter_size)
 
     def sync_experts(self):
+        """
+        Rebuild self.experts to match the gate's current n_routed_experts.
+        This must be called after adaptive_tune() to keep the ModuleList in sync.
+        """
         current = len(self.experts)
         target = self.gate.n_routed_experts
         if current < target:
             for _ in range(target - current):
-                self.experts.append(DeepseekMLP(self.config, intermediate_size=self.config.moe_intermediate_size))
+                self.experts.append(
+                    DeepseekMLP(self.config, intermediate_size=self.config.moe_intermediate_size)
+                )
         elif current > target:
             del self.experts[target:]
         self.n_routed_experts = target
 
     def forward(self, hidden_states):
+        # Ensure expert list matches gate's dynamic count before routing
         if self.training:
             self.sync_experts()
 
@@ -513,40 +485,40 @@ class DeepseekMoE(nn.Module):
         orig_shape = hidden_states.shape
 
         topk_idx, topk_weight, aux_loss = self.gate(hidden_states)
+
         x = hidden_states.view(-1, hidden_states.shape[-1])
 
-        # Compute expert outputs and count token assignments for bias update
+        # Unweighted average of activated routed experts
         y = torch.zeros_like(x)
-        token_counts = torch.zeros(self.n_routed_experts, device=x.device)
         for i in range(self.n_routed_experts):
-            expert_weight = topk_weight[:, i:i+1]
+            expert_weight = topk_weight[:, i:i+1]   # [N, 1]
             if expert_weight.sum() > 1e-8:
                 expert_out = self.experts[i](x)
                 y = y + expert_out * expert_weight
-                # count tokens routed to this expert (weight > 0)
-                token_counts[i] = (expert_weight > 0).sum().item()
 
         y = y.view(*orig_shape)
 
+        # Add auxiliary loss (scaled by aux_loss_alpha)
         if self.training and aux_loss is not None:
-            y = AddAuxiliaryLoss.apply(y, aux_loss)
-            # Update loss‑free balancing biases
-            self.gate.update_biases(token_counts)
+            y = AddAuxiliaryLoss.apply(y, aux_loss * self.config.aux_loss_alpha)
 
-        if hasattr(self, 'shared_experts'):
+        # Add shared experts (if any)
+        if hasattr(self, "shared_experts"):
             y = y + self.shared_experts(identity)
-        y = y + identity
 
+        # Residual connection
+        y = y + identity
         return y
-    
+
     @torch.no_grad()
     def moe_infer(self, x, flat_expert_indices, flat_expert_weights):
+        # Kept for compatibility (currently unused because forward always uses the new path)
         expert_cache = torch.zeros_like(x)
         idxs = flat_expert_indices.argsort()
         tokens_per_expert = flat_expert_indices.bincount().cpu().numpy().cumsum(0)
         token_idxs = idxs // self.num_experts_per_tok
         for i, end_idx in enumerate(tokens_per_expert):
-            start_idx = 0 if i == 0 else tokens_per_expert[i-1]
+            start_idx = 0 if i == 0 else tokens_per_expert[i - 1]
             if start_idx == end_idx:
                 continue
             expert = self.experts[i]
@@ -554,7 +526,12 @@ class DeepseekMoE(nn.Module):
             expert_tokens = x[exp_token_idx]
             expert_out = expert(expert_tokens)
             expert_out.mul_(flat_expert_weights[idxs[start_idx:end_idx]])
-            expert_cache.scatter_reduce_(0, exp_token_idx.view(-1, 1).repeat(1, x.shape[-1]), expert_out, reduce='sum')
+            expert_cache.scatter_reduce_(
+                0,
+                exp_token_idx.view(-1, 1).repeat(1, x.shape[-1]),
+                expert_out,
+                reduce="sum"
+            )
         return expert_cache
 
 
@@ -570,7 +547,6 @@ def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
     hidden_states = hidden_states[:, :, None, :, :].expand(batch, num_key_value_heads, n_rep, slen, head_dim)
     return hidden_states.reshape(batch, num_key_value_heads * n_rep, slen, head_dim)
 
-
 # Copied from transformers.models.llama.modeling_llama.LlamaAttention with Llama->Deepseek
 class DeepseekAttention(nn.Module):
     """Multi-headed attention from 'Attention Is All You Need' paper"""
@@ -585,7 +561,6 @@ class DeepseekAttention(nn.Module):
                 "to errors during the forward call, if caching is used. Please make sure to provide a `layer_idx` "
                 "when creating this class."
             )
-
         self.attention_dropout = config.attention_dropout
         self.hidden_size = config.hidden_size
         self.num_heads = config.num_attention_heads
@@ -694,7 +669,7 @@ class DeepseekAttention(nn.Module):
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
 
         if past_key_value is not None:
-            cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
+            cache_kwargs = {"sin": sin, "cos": cos}
             key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
 
         key_states = repeat_kv(key_states, self.num_key_value_groups)
@@ -715,7 +690,6 @@ class DeepseekAttention(nn.Module):
                 )
             attn_weights = attn_weights + attention_mask
 
-        # upcast attention to fp32
         attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
         attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
         attn_output = torch.matmul(attn_weights, value_states)
@@ -727,7 +701,6 @@ class DeepseekAttention(nn.Module):
             )
 
         attn_output = attn_output.transpose(1, 2).contiguous()
-
         attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
 
         if self.config.pretraining_tp > 1:
@@ -1048,11 +1021,11 @@ class DeepseekDecoderLayer(nn.Module):
 
         self.self_attn = Deepseek_ATTENTION_CLASSES[config._attn_implementation](config=config, layer_idx=layer_idx)
 
-        # Use DYNMoE version
+        # Use DYNMoE version if routed experts are enabled and layer condition holds
         self.mlp = DeepseekMoE(config) if (config.n_routed_experts is not None and
                                            layer_idx >= config.first_k_dense_replace and
                                            layer_idx % config.moe_layer_freq == 0) else DeepseekMLP(config)
-       
+
         self.input_layernorm = DeepseekRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.post_attention_layernorm = DeepseekRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
 
@@ -1066,29 +1039,14 @@ class DeepseekDecoderLayer(nn.Module):
         use_cache: Optional[bool] = False,
         **kwargs,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
-        """
-        Args:
-            hidden_states (`torch.FloatTensor`): input to the layer of shape `(batch, seq_len, embed_dim)`
-            attention_mask (`torch.FloatTensor`, *optional*):
-                attention mask of size `(batch_size, sequence_length)` if flash attention is used or `(batch_size, 1,
-                query_sequence_length, key_sequence_length)` if default attention is used.
-            output_attentions (`bool`, *optional*):
-                Whether or not to return the attentions tensors of all attention layers. See `attentions` under
-                returned tensors for more detail.
-            use_cache (`bool`, *optional*):
-                If set to `True`, `past_key_values` key value states are returned and can be used to speed up decoding
-                (see `past_key_values`).
-            past_key_value (`Tuple(torch.FloatTensor)`, *optional*): cached past key and value projection states
-        """
         if "padding_mask" in kwargs:
             warnings.warn(
                 "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
             )
-        residual = hidden_states
 
+        residual = hidden_states
         hidden_states = self.input_layernorm(hidden_states)
 
-        # Self Attention
         hidden_states, self_attn_weights, present_key_value = self.self_attn(
             hidden_states=hidden_states,
             attention_mask=attention_mask,
@@ -1100,20 +1058,16 @@ class DeepseekDecoderLayer(nn.Module):
         )
         hidden_states = residual + hidden_states
 
-        # Fully Connected
         residual = hidden_states
         hidden_states = self.post_attention_layernorm(hidden_states)
         hidden_states = self.mlp(hidden_states)
         hidden_states = residual + hidden_states
 
         outputs = (hidden_states,)
-
         if output_attentions:
             outputs += (self_attn_weights,)
-
         if use_cache:
             outputs += (present_key_value,)
-
         return outputs
 
 
