@@ -8,30 +8,17 @@ import math
 from transformers.utils import logging
 from transformers.configuration_utils import PretrainedConfig
 
-# GLOBAL DYNMOE CONFIGS (optimised for better activation and load balance)
-# GLOBAL DYNMOE CONFIGS (as described in the approach)
-#ADAPTIVE_AUDIT_STEPS = 10          # audit every 300 training steps (auto‑tuning)
-#MAX_ROUTED_EXPERTS = 6              # maximum number of routed experts (capped)
-#DYNMOE_THRESHOLD_INIT = 0.05         # initial trainable threshold G_j (sigmoid(G_j)=0.7)
-#BIAS_UPDATE_RATE = 0.001            # u from Algorithm 1 (Loss‑Free Balancing)
-
-# GLOBAL DYNMOE CONFIGS (revised for better balance and lower perplexity)
-#ADAPTIVE_AUDIT_STEPS = 10          # was 10 – allow biases to stabilise before expert pool changes
-#MAX_ROUTED_EXPERTS = 6              # was 6 – increase capacity to match baseline DeepSeekMoE
-#DYNMOE_THRESHOLD_INIT = -0.2        # was 0.05 – sigmoid(-0.2)=0.45, encourages more activation
-#BIAS_UPDATE_RATE = 0.01             # was 0.001 – stronger bias adjustments to quickly balance load
-
 # GLOBAL DYNMOE CONFIGS (optimised for lower MaxVIO and better efficiency)
 ADAPTIVE_AUDIT_STEPS = 10          # was 10 – prevents premature expert removal, allows bias stabilisation
 MAX_ROUTED_EXPERTS = 6              # keep 6 to limit active parameters (lower FLOPs than 8)
-DYNMOE_THRESHOLD_INIT = -0.04 #-0.02, -0.03, -0.05        # was 0.05 – sigmoid(-0.5)=0.38, ensures experts activate from start
+DYNMOE_THRESHOLD_INIT = -0.08 #-0.04 #-0.02, -0.03, -0.05        # was 0.05 – sigmoid(-0.5)=0.38, ensures experts activate from start
 BIAS_UPDATE_RATE = 0.001             # was 0.001 – stronger bias adjustments to quickly balance load
 
 # DYNMOE_THRESHOLD_INIT reduce + BIAS_UPDATE_RATE reduce -> reduce Maxvio & Perplexity & increase Active Params
 
 logger = logging.get_logger(__name__)
 
-#DEEPSEEK_PRETRAINED_CONFIG_ARCHIVE_MAP = {}
+DEEPSEEK_PRETRAINED_CONFIG_ARCHIVE_MAP = {}
 class DeepseekConfig(PretrainedConfig):
     r"""
     This is the configuration class to store the configuration of a [`DeepseekModel`]. It is used to instantiate an DeepSeek
@@ -122,6 +109,7 @@ class DeepseekConfig(PretrainedConfig):
     >>> # Accessing the model configuration
     >>> configuration = model.config
     ```"""
+
     model_type = "deepseek"
     keys_to_ignore_at_inference = ["past_key_values"]
 
@@ -135,14 +123,14 @@ class DeepseekConfig(PretrainedConfig):
         num_attention_heads=32,
         num_key_value_heads=32,
         n_shared_experts=2,
-        n_routed_experts=None,          # if None, will be set to MAX_ROUTED_EXPERTS
-        num_experts_per_tok=2,            # kept for compatibility (not used), Will be ignore in MoEGate.forward() using K_r -> to be competible to compile with DeepSeekMoE compiler
-        moe_layer_freq=1,
-        first_k_dense_replace=0,
-        norm_topk_prob=False,
-        scoring_func="softmax",
-        aux_loss_alpha=0.001,
-        seq_aux=True,
+        n_routed_experts=None,                 ########
+        num_experts_per_tok=2,                 # Will be ignore in MoEGate.forward() using K_r -> to be competible to compile with DeepSeekMoE compiler
+        moe_layer_freq = 1,
+        first_k_dense_replace = 0,
+        norm_topk_prob = False,
+        scoring_func = 'softmax',
+        aux_loss_alpha = 0.001,
+        seq_aux = True,
         hidden_act="silu",
         max_position_embeddings=2048,
         initializer_range=0.02,
@@ -157,27 +145,19 @@ class DeepseekConfig(PretrainedConfig):
         rope_scaling=None,
         attention_bias=False,
         attention_dropout=0.0,
-        max_routed_experts=MAX_ROUTED_EXPERTS,            # upper bound for adaptive expert count
-        adaptive_audit_steps=ADAPTIVE_AUDIT_STEPS,          # frequency of adaptive tuning (steps)
-        dynmoe_threshold_init=DYNMOE_THRESHOLD_INIT,      # initial value for thresholds G_j
         **kwargs,
     ):
-        super().__init__(
-            pad_token_id=pad_token_id,
-            bos_token_id=bos_token_id,
-            eos_token_id=eos_token_id,
-            tie_word_embeddings=tie_word_embeddings,
-            **kwargs,
-        )
         self.vocab_size = vocab_size
+        self.max_position_embeddings = max_position_embeddings
         self.hidden_size = hidden_size
         self.intermediate_size = intermediate_size
         self.moe_intermediate_size = moe_intermediate_size
         self.num_hidden_layers = num_hidden_layers
         self.num_attention_heads = num_attention_heads
-        self.num_key_value_heads = num_key_value_heads if num_key_value_heads is not None else num_attention_heads
         self.n_shared_experts = n_shared_experts
-        self.n_routed_experts = n_routed_experts if n_routed_experts is not None else max_routed_experts
+        if n_routed_experts is None:
+            n_routed_experts = MAX_ROUTED_EXPERTS
+        self.n_routed_experts = n_routed_experts
         self.num_experts_per_tok = num_experts_per_tok
         self.moe_layer_freq = moe_layer_freq
         self.first_k_dense_replace = first_k_dense_replace
@@ -185,22 +165,31 @@ class DeepseekConfig(PretrainedConfig):
         self.scoring_func = scoring_func
         self.aux_loss_alpha = aux_loss_alpha
         self.seq_aux = seq_aux
+        # for backward compatibility
+        if num_key_value_heads is None:
+            num_key_value_heads = num_attention_heads
+        self.num_key_value_heads = num_key_value_heads
         self.hidden_act = hidden_act
-        self.max_position_embeddings = max_position_embeddings
         self.initializer_range = initializer_range
         self.rms_norm_eps = rms_norm_eps
         self.pretraining_tp = pretraining_tp
         self.use_cache = use_cache
         self.rope_theta = rope_theta
         self.rope_scaling = rope_scaling
+        self._rope_scaling_validation()
         self.attention_bias = attention_bias
         self.attention_dropout = attention_dropout
-        self.max_routed_experts = max_routed_experts
-        self.adaptive_audit_steps = adaptive_audit_steps
-        self.dynmoe_threshold_init = dynmoe_threshold_init
-
-        self._rope_scaling_validation()
-
+        
+        # DYNMoE specific parameters
+        self.max_routed_experts = MAX_ROUTED_EXPERTS
+        
+        super().__init__(
+            pad_token_id=pad_token_id,
+            bos_token_id=bos_token_id,
+            eos_token_id=eos_token_id,
+            tie_word_embeddings=tie_word_embeddings,
+            **kwargs,
+        )
     def _rope_scaling_validation(self):
         """
         Validate the `rope_scaling` configuration.

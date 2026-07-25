@@ -15,7 +15,7 @@ class AdaptiveExpertTuningCallback(TrainerCallback):
     `adaptive_tune()` method (e.g., DynamicMoEGate).  Works with any model
     structure by scanning all submodules.
     """
-    def __init__(self, audit_steps: int = 10):
+    def __init__(self, audit_steps: int = ADAPTIVE_AUDIT_STEPS):
         self.audit_steps = audit_steps
         self.global_step = 0
 
@@ -27,9 +27,11 @@ class AdaptiveExpertTuningCallback(TrainerCallback):
     def _apply_tuning(self, model):
         unwrapped = model.module if hasattr(model, 'module') else model
         tuned_count = 0
-        for module in unwrapped.modules():
-            if hasattr(module, 'adaptive_tune'):
-                module.adaptive_tune()
-                tuned_count += 1
+        for layer in unwrapped.model.layers:
+            if hasattr(layer, 'mlp') and hasattr(layer.mlp, 'gate'):
+                if hasattr(layer.mlp.gate, 'adaptive_tune'):
+                    layer.mlp.gate.adaptive_tune()      # updates gate parameters
+                    layer.mlp.sync_experts()            # synchronises the expert modules
+                    tuned_count += 1
         if tuned_count > 0:
-            print(f"[DYNMoE] Tuned {tuned_count} MoE layers")
+            print(f"[DYNMoE Adaptive] Tuned {tuned_count} MoE layers")
