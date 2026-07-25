@@ -24,8 +24,15 @@ from deepseekmoe_dynamic_routing_algorithms.source.training_utils.config import 
     WEIGHT_DECAY,
     EARLY_STOPPING_PATIENCE,
     EARLY_STOPPING_THRESHOLD,
-    world_size
+    MAX_ROUTED_EXPERTS
+    world_size,
+    ADAPTIVE_AUDIT_STEPS,
+    MAX_ROUTED_EXPERTS,
+    DYNMOE_THRESHOLD_INIT,
+    BIAS_UPDATE_RATE,
 )
+
+from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.config import 
 
 class ResourceMonitorCallback(TrainerCallback):
     def __init__(self):
@@ -200,6 +207,7 @@ class MoEMetricsCallback(TrainerCallback):
         unwrapped = model.module if hasattr(model, 'module') else model
         config = unwrapped.config
         n_experts = config.n_routed_experts
+        
 
         # Determine architecture (safe in case it changed)
         is_dynmoe = False
