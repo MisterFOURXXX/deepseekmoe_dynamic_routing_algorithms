@@ -158,9 +158,11 @@ class DynamicMoEGate(nn.Module):
     
     def adaptive_tune(self):
         if self.audit_counter < self.audit_interval:
-            return
-        
+            return False
+
         with torch.no_grad():
+            changed = False
+            # Remove dead experts
             if self.n_routed_experts > 2:
                 active = self.routing_records > 0
                 if not active.all():
@@ -173,8 +175,10 @@ class DynamicMoEGate(nn.Module):
                         self.biases.data = self.biases.data[keep]
                         self.routing_records = self.routing_records[keep]
                         self.n_routed_experts = int(keep.sum().item())
-                        print(f"[DYNMoE] Removed expert → {self.n_routed_experts}")
-            
+                        changed = True
+                        print(f"[DYNMoE Adaptive] Removed expert → {self.n_routed_experts} routed experts")
+
+            # Add new expert
             if torch.norm(self.dropped_embeddings) > 1e-6 and self.n_routed_experts < self.max_expert_num:
                 new_w = F.normalize(self.dropped_embeddings.unsqueeze(0), p=2, dim=-1)
                 self.weight.data = torch.cat([self.weight.data, new_w], dim=0)
@@ -182,11 +186,13 @@ class DynamicMoEGate(nn.Module):
                 self.biases.data = torch.cat([self.biases.data, torch.zeros(1, device=self.biases.device)])
                 self.routing_records = torch.cat([self.routing_records, torch.zeros(1, device=self.routing_records.device)])
                 self.n_routed_experts += 1
-                print(f"[DYNMoE] Added new expert → {self.n_routed_experts}")
-            
+                changed = True
+                print(f"[DYNMoE Adaptive] Added new expert → {self.n_routed_experts} routed experts")
+
             self.routing_records.zero_()
             self.dropped_embeddings.zero_()
             self.audit_counter = 0
+            return changed
 
 # AUXILIARY LOSS 
 class AddAuxiliaryLoss(torch.autograd.Function):
@@ -232,6 +238,18 @@ class DynMoEMLP(nn.Module):
             nn.GELU() if config.hidden_act == "gelu" else ACT2FN[config.hidden_act],
             nn.Linear(intermediate_size, config.hidden_size),
         )
+
+    def sync_experts(self):
+        """Ensure self.experts length matches gate's n_routed_experts."""
+        current = len(self.experts)
+        target = self.gate.n_routed_experts
+        if current < target:
+            for _ in range(target - current):
+                self.experts.append(self._create_expert(self.config))
+        elif current > target:
+            # remove extra experts from the end
+            del self.experts[target:]
+        self.n_routed_experts = target
     
     def forward(self, hidden_states):
         identity = hidden_states
@@ -250,6 +268,7 @@ class DynMoEMLP(nn.Module):
         y = y.view(*orig_shape)
         
         if self.training and aux_loss is not None:
+            self.sync_experts()   # keep in sync before routing
             y = AddAuxiliaryLoss.apply(y, aux_loss)
         
         if hasattr(self, 'shared_experts'):

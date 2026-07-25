@@ -482,55 +482,64 @@ class AddAuxiliaryLoss(torch.autograd.Function):
     
 # REVISED DeepseekMoE #####################################
 class DeepseekMoE(nn.Module):
-    """
-    A mixed expert module containing shared experts.
-    """
     def __init__(self, config):
         super().__init__()
         self.config = config
         self.num_experts_per_tok = config.num_experts_per_tok
         self.n_routed_experts = config.n_routed_experts
         self.n_shared_experts = config.n_shared_experts
-       
-        # Routed fine-grained experts
+
         self.experts = nn.ModuleList([
             DeepseekMLP(config, intermediate_size=config.moe_intermediate_size)
             for _ in range(config.n_routed_experts)
         ])
         self.gate = MoEGate(config)
-       
-        # Shared experts (always active - unchanged)
         if self.n_shared_experts is not None:
             inter_size = config.moe_intermediate_size * self.n_shared_experts
             self.shared_experts = DeepseekMLP(config, intermediate_size=inter_size)
 
+    def sync_experts(self):
+        current = len(self.experts)
+        target = self.gate.n_routed_experts
+        if current < target:
+            for _ in range(target - current):
+                self.experts.append(DeepseekMLP(self.config, intermediate_size=self.config.moe_intermediate_size))
+        elif current > target:
+            del self.experts[target:]
+        self.n_routed_experts = target
+
     def forward(self, hidden_states):
+        if self.training:
+            self.sync_experts()
+
         identity = hidden_states
         orig_shape = hidden_states.shape
-       
+
         topk_idx, topk_weight, aux_loss = self.gate(hidden_states)
-       
         x = hidden_states.view(-1, hidden_states.shape[-1])
-        
-        # === UNIFIED PATH FOR TRAINING AND INFERENCE ===
-        # This matches DYNMoE's unweighted average of dynamically activated experts
+
+        # Compute expert outputs and count token assignments for bias update
         y = torch.zeros_like(x)
+        token_counts = torch.zeros(self.n_routed_experts, device=x.device)
         for i in range(self.n_routed_experts):
-            expert_weight = topk_weight[:, i:i+1]  # [N, 1]
+            expert_weight = topk_weight[:, i:i+1]
             if expert_weight.sum() > 1e-8:
                 expert_out = self.experts[i](x)
                 y = y + expert_out * expert_weight
-        
+                # count tokens routed to this expert (weight > 0)
+                token_counts[i] = (expert_weight > 0).sum().item()
+
         y = y.view(*orig_shape)
-        
+
         if self.training and aux_loss is not None:
             y = AddAuxiliaryLoss.apply(y, aux_loss)
-       
-        # Shared experts + residual (unchanged)
+            # Update loss‑free balancing biases
+            self.gate.update_biases(token_counts)
+
         if hasattr(self, 'shared_experts'):
             y = y + self.shared_experts(identity)
         y = y + identity
-       
+
         return y
     
     @torch.no_grad()

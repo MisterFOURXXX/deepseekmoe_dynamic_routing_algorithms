@@ -40,7 +40,7 @@ def load_and_preprocess_multiwoz(zip_path="MultiWOZ-coref/MultiWOZ2_3.zip", samp
         return domains.pop() if domains else "unknown"
 
     def normalize_dialogue_id(dialogue_id):
-        return dialogue_id.removesuffix('.json')
+        return dialogue_id[:-len('.json')] if dialogue_id.endswith('.json') else dialogue_id
 
     raw_data = []
     for dialogue_id, dialogue in data.items():
@@ -102,12 +102,28 @@ def load_and_preprocess_multiwoz(zip_path="MultiWOZ-coref/MultiWOZ2_3.zip", samp
     COMPLEX_NUMBER_WORDS_PATTERN = rf"\b((?:{NUMBER_WORDS_FOR_REGEX})(?:\s+(?:and\s+)?(?:{NUMBER_WORDS_FOR_REGEX}))*)\b"
 
     def normalize_currency_in_text(text):
+        # Validate that the matched string consists only of allowed number words
+        def is_valid_number_word_sequence(s):
+            # simple check: split and verify each word is in the number words set
+            words = s.lower().split()
+            number_words_set = set(NUMBER_WORDS_FOR_REGEX.split('|'))
+            return all(w in number_words_set for w in words)
+
         def word_num_keyword_replacer(match):
             num_word_str = match.group(1)
             currency_key_str = match.group(2).lower()
-            num_val = w2n.word_to_num(num_word_str)
-            currency_code = CURRENCY_KEYWORDS_MAP.get(currency_key_str, currency_key_str.upper())
-            return f"{num_val} {currency_code}"
+            # Only convert if the number word sequence is valid
+            if is_valid_number_word_sequence(num_word_str):
+                try:
+                    num_val = w2n.word_to_num(num_word_str)
+                    currency_code = CURRENCY_KEYWORDS_MAP.get(currency_key_str, currency_key_str.upper())
+                    return f"{num_val} {currency_code}"
+                except ValueError:
+                    pass
+            # fallback: leave unchanged
+            return match.group(0)
+
+        # rest of the function unchanged except the fallback
         currency_keywords_regex = "|".join([re.escape(k) for k in ALL_CURRENCY_KEYWORDS_SORTED])
         pattern = rf"({COMPLEX_NUMBER_WORDS_PATTERN})\s+({currency_keywords_regex})\b"
         text = re.sub(pattern, word_num_keyword_replacer, text, flags=re.IGNORECASE)
