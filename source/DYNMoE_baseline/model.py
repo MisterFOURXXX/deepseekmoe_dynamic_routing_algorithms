@@ -238,50 +238,68 @@ class DynMoEMLP(nn.Module):
         self.config = config
         self.n_routed_experts = config.num_experts
         self.n_shared_experts = config.n_shared_experts
-        
+
         self.experts = nn.ModuleList([
             self._create_expert(config)
             for _ in range(config.num_experts)
         ])
         self.gate = DynamicMoEGate(config)
-        
+
         if self.n_shared_experts is not None and self.n_shared_experts > 0:
             inter_size = config.moe_intermediate_size * self.n_shared_experts
             self.shared_experts = self._create_expert(config, intermediate_size=inter_size)
-    
+
     def _create_expert(self, config, intermediate_size=None):
         if intermediate_size is None:
             intermediate_size = config.moe_intermediate_size
-        
         return nn.Sequential(
             nn.Linear(config.hidden_size, intermediate_size),
             nn.GELU() if config.hidden_act == "gelu" else ACT2FN[config.hidden_act],
             nn.Linear(intermediate_size, config.hidden_size),
         )
-    
+
+    def sync_experts(self):
+        """
+        Rebuild self.experts to match the gate's current n_routed_experts.
+        This must be called after adaptive_tune() to keep the ModuleList in sync.
+        """
+        current = len(self.experts)
+        target = self.gate.n_routed_experts
+        if current < target:
+            for _ in range(target - current):
+                self.experts.append(self._create_expert(self.config))
+        elif current > target:
+            # Remove extra experts from the end
+            del self.experts[target:]
+        self.n_routed_experts = target
+
     def forward(self, hidden_states):
+        # Ensure experts are in sync before routing (especially after adaptive_tune)
+        if self.training:
+            self.sync_experts()
+
         identity = hidden_states
         orig_shape = hidden_states.shape
-        
+
         topk_idx, topk_weight, aux_loss = self.gate(hidden_states)
         x = hidden_states.view(-1, hidden_states.shape[-1])
-        
+
         y = torch.zeros_like(x)
         for i in range(self.n_routed_experts):
             expert_weight = topk_weight[:, i:i+1]
             if expert_weight.sum() > 1e-8:
                 expert_out = self.experts[i](x)
                 y = y + expert_out * expert_weight
-        
+
         y = y.view(*orig_shape)
-        
+
         if self.training and aux_loss is not None:
             y = AddAuxiliaryLoss.apply(y, aux_loss)
-        
+
         if hasattr(self, 'shared_experts'):
             y = y + self.shared_experts(identity)
         y = y + identity
-        
+
         return y
 
 # ====================== GPT-LIKE DECODER WITH DYNMoE ======================
