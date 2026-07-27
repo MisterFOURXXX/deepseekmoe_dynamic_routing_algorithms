@@ -71,36 +71,12 @@ if torch.cuda.is_available():
     print(f"Memory efficient SDP enabled: {mem_efficient_sdp_enabled()}")
 
 from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.config import (
-    ADAPTIVE_AUDIT_STEPS,
-    MAX_ROUTED_EXPERTS,
-    DYNMOE_THRESHOLD_INIT,
-    BIAS_UPDATE_RATE,
+    ADAPTIVE_AUDIT_STEPS,       # was 10 – prevents premature expert removal, allows bias stabilisation
+    MAX_ROUTED_EXPERTS,         # keep 6 to limit active parameters (lower FLOPs than 8)
+    DYNMOE_THRESHOLD_INIT,      #-0.02 #0.03 #-0.04 #-0.02, -0.03, -0.05 -0.08       # was 0.05 – sigmoid(-0.5)=0.38, ensures experts activate from start
+    SPARSITY_ALPHA,             # coefficient for sparsity penalty in auxiliary loss
+    BIAS_UPDATE_RATE,           # was 0.001 – stronger bias adjustments to quickly balance load
 )
-
-"""
-coding=utf-8
-Copyright 2023 DeepSeek-AI and The HuggingFace Inc. team. All rights reserved.
-
-This code is based on EleutherAI's GPT-NeoX library and the GPT-NeoX
-and OPT implementations in this library. It has been modified from its
-original forms to accommodate minor architectural differences compared
-to GPT-NeoX and OPT used by the Meta AI team that trained the model.
- 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-     http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-PyTorch DeepSeek model.
-
-Reference repository: https://huggingface.co/deepseek-ai/deepseek-moe-16b-base/tree/main
-"""
 
 """
 coding=utf-8
@@ -337,9 +313,11 @@ class DeepseekMLP(nn.Module):
 
 
 # MoEGate (Top-Any + Adaptive) ####################################################################
+# MoEGate (Top-Any + Adaptive) ####################################################################
+# MoEGate (Top-Any + Adaptive) with Sparsity Regularization ####################################################################
 class MoEGate(nn.Module):
     """
-    DYNMoE Top‑Any Gating with Loss‑Free Balancing.
+    DYNMoE Top‑Any Gating with Loss‑Free Balancing and Sparsity Regularization.
     Replaces the fixed top‑k router of DeepSeekMoE.
     """
     def __init__(self, config):
@@ -367,6 +345,9 @@ class MoEGate(nn.Module):
         # Store the indices of currently active experts (used to sync experts list)
         self.register_buffer('active_indices', torch.arange(self.n_routed_experts))
 
+        # Coefficient for sparsity penalty
+        self.sparsity_alpha = getattr(config, 'sparsity_alpha', SPARSITY_ALPHA)
+
     def forward(self, hidden_states):
         bsz, seq_len, h = hidden_states.shape
         x = hidden_states.view(-1, h)
@@ -384,7 +365,21 @@ class MoEGate(nn.Module):
         g = (g > 0).float()                                    # binary activation g_j
 
         # Dynamic activation count k_r – Eq. (4) in the approach
-        k_r = g.sum(dim=-1, keepdim=True).clamp(min=1e-8)
+        k_r = g.sum(dim=-1, keepdim=True)
+
+        # === FIX 3: Handle zero‑activation tokens during training (same as test‑time safeguard) ===
+        # This ensures every token activates at least one expert, preventing dead routes.
+        zero_mask = (k_r.squeeze(-1) == 0)
+        if zero_mask.any():
+            # Fallback to top‑1 expert for those tokens
+            max_idx = torch.argmax(biased_s, dim=-1)   # use biased_s or s; biased_s includes biases
+            for i in zero_mask.nonzero(as_tuple=True)[0]:
+                g[i, :] = 0
+                g[i, max_idx[i]] = 1.0
+            k_r = g.sum(dim=-1, keepdim=True)
+
+        # Now clamp only to avoid division by zero (should never be zero after fallback)
+        k_r = k_r.clamp(min=1.0)
 
         # Straight‑through estimator (gradients pass through sigmoid)
         if self.training:
@@ -396,16 +391,8 @@ class MoEGate(nn.Module):
         # For compatibility: indices of activated experts (not used in unweighted average)
         topk_idx = torch.arange(self.n_routed_experts, device=g.device).unsqueeze(0).expand_as(g)
 
-        # === Test‑time safeguard (fallback to top‑1 when k_r == 0) ===
-        if not self.training:
-            zero_mask = (k_r.squeeze(-1) == 0)
-            if zero_mask.any():
-                max_affinity_idx = torch.argmax(s, dim=-1)
-                for i in zero_mask.nonzero(as_tuple=True)[0]:
-                    g[i, :] = 0
-                    g[i, max_affinity_idx[i]] = 1.0
-                k_r = g.sum(dim=-1, keepdim=True).clamp(min=1e-8)
-                topk_weight = g / k_r
+        # === FIX 2: Compute token counts per expert for bias update ===
+        token_counts = g.sum(dim=0)   # shape (E,)
 
         # Update adaptive records (only during training)
         if self.training:
@@ -419,24 +406,28 @@ class MoEGate(nn.Module):
                     dropped_emb = x[dropped_mask].mean(dim=0)
                     self.dropped_embeddings += dropped_emb
 
-        aux_loss = self._sparse_simple_loss() if self.training else None
-        return topk_idx, topk_weight, aux_loss
+        # Auxiliary loss includes sparsity penalty (pass k_r for sparsity term)
+        aux_loss = self._sparse_simple_loss(k_r) if self.training else None
+        # Return token_counts so that the MoE layer can call update_biases
+        return topk_idx, topk_weight, aux_loss, token_counts
 
-    def _sparse_simple_loss(self):
+    def _sparse_simple_loss(self, k_r):
         """
-        Sparse‑and‑Simple Auxiliary Loss (replaces DeepSeekMoE’s load balancing losses)
-        L_aux = ||W_g^T W_g - I||_2 + (1/(mN-K_s)) * Σ||w_{g,j}||_2
+        Sparse‑and‑Simple Auxiliary Loss + Sparsity Penalty.
+        L_aux = diversity + simplicity + sparsity_alpha * mean(k_r)
         """
         Wg = self.weight
         gram = torch.matmul(Wg, Wg.T)
         diversity = torch.norm(gram - torch.eye(self.n_routed_experts, device=Wg.device), p='fro') ** 2
         simplicity = torch.mean(torch.norm(Wg, p=2, dim=1))
-        return diversity + simplicity
+        # Sparsity: average number of activated experts per token (over the batch)
+        sparsity = k_r.mean()   # scalar
+        return diversity + simplicity + self.sparsity_alpha * sparsity
 
     def update_biases(self, token_counts_per_expert):
         """
         Loss‑Free Balancing bias update (Algorithm 1).
-        b_i = b_i + u * sign(e_i)   where e_i = c_i - avg(c_i)
+        CORRECTED: b_i = b_i + u * sign(avg - c_i)   (increase bias for underused experts)
         """
         if not self.training:
             return
@@ -444,7 +435,8 @@ class MoEGate(nn.Module):
         avg = total / self.n_routed_experts
         violation = token_counts_per_expert - avg
         with torch.no_grad():
-            self.biases += BIAS_UPDATE_RATE * torch.sign(violation)
+            # The correct sign: add bias when expert is underused (c_i < avg)
+            self.biases -= BIAS_UPDATE_RATE * torch.sign(violation)   # negative sign
 
     def adaptive_tune(self):
         """
@@ -531,6 +523,7 @@ class AddAuxiliaryLoss(torch.autograd.Function):
         return grad_output, grad_loss
     
 # REVISED DeepseekMoE #####################################
+# REVISED DeepseekMoE #####################################
 class DeepseekMoE(nn.Module):
     """
     A mixed expert module containing shared experts.
@@ -579,19 +572,26 @@ class DeepseekMoE(nn.Module):
         identity = hidden_states
         orig_shape = hidden_states.shape
 
-        topk_idx, topk_weight, aux_loss = self.gate(hidden_states)
+        # Get gate outputs including token_counts
+        topk_idx, topk_weight, aux_loss, token_counts = self.gate(hidden_states)
+
+        # === FIX 2: Update biases using token counts ===
+        if self.training:
+            self.gate.update_biases(token_counts)
 
         x = hidden_states.view(-1, hidden_states.shape[-1])
 
-        # === UNIFIED PATH FOR TRAINING AND INFERENCE ===
-        # This matches DYNMoE's unweighted average of dynamically activated experts
+        # === FIX 1: Use active_indices to map gate indices to actual experts ===
         y = torch.zeros_like(x)
-        # Use the current number of routed experts (from gate)
-        for i in range(self.gate.n_routed_experts):
+        active_indices = self.gate.active_indices  # shape (E,)
+        # Iterate over experts that have at least one token
+        expert_used = (topk_weight.sum(dim=0) > 0).nonzero(as_tuple=True)[0]
+        for i in expert_used:
+            # i is the gate's expert ID; map to actual expert index
+            actual_idx = active_indices[i].item()
             expert_weight = topk_weight[:, i:i+1]  # [N, 1]
-            if expert_weight.sum() > 1e-8:
-                expert_out = self.experts[i](x)
-                y = y + expert_out * expert_weight
+            expert_out = self.experts[actual_idx](x)
+            y = y + expert_out * expert_weight
 
         y = y.view(*orig_shape)
 

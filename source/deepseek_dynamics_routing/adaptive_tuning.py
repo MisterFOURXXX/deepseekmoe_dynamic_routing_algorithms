@@ -12,9 +12,8 @@ ADAPTIVE_AUDIT_STEPS = 10
 class AdaptiveExpertTuningCallback(TrainerCallback):
     """
     Callback that triggers adaptive tuning on all modules that have an
-    `adaptive_tune()` method (e.g., MoEGate / DynamicMoEGate). It then
-    synchronises experts by calling `sync_experts()` on any module that
-    provides it (e.g., DeepseekMoE / DynMoEMLP).
+    `adaptive_tune()` method (e.g., MoEGate). It then synchronises experts
+    by calling `sync_experts()` on any module that provides it (e.g., DeepseekMoE).
     Works with any model structure by scanning all submodules.
     """
     def __init__(self, audit_steps: int = ADAPTIVE_AUDIT_STEPS):

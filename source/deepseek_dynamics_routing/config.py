@@ -8,10 +8,24 @@ import math
 from transformers.utils import logging
 from transformers.configuration_utils import PretrainedConfig
 
+# GLOBAL DYNMOE CONFIGS (optimised for better activation and load balance)
+# GLOBAL DYNMOE CONFIGS (as described in the approach)
+#ADAPTIVE_AUDIT_STEPS = 10          # audit every 300 training steps (auto‑tuning)
+#MAX_ROUTED_EXPERTS = 6              # maximum number of routed experts (capped)
+#DYNMOE_THRESHOLD_INIT = 0.05         # initial trainable threshold G_j (sigmoid(G_j)=0.7)
+#BIAS_UPDATE_RATE = 0.001            # u from Algorithm 1 (Loss‑Free Balancing)
+
+# GLOBAL DYNMOE CONFIGS (revised for better balance and lower perplexity)
+#ADAPTIVE_AUDIT_STEPS = 10          # was 10 – allow biases to stabilise before expert pool changes
+#MAX_ROUTED_EXPERTS = 6              # was 6 – increase capacity to match baseline DeepSeekMoE
+#DYNMOE_THRESHOLD_INIT = -0.2        # was 0.05 – sigmoid(-0.2)=0.45, encourages more activation
+#BIAS_UPDATE_RATE = 0.01             # was 0.001 – stronger bias adjustments to quickly balance load
+
 # GLOBAL DYNMOE CONFIGS (optimised for lower MaxVIO and better efficiency)
-ADAPTIVE_AUDIT_STEPS = 10          # was 10 – prevents premature expert removal, allows bias stabilisation
-MAX_ROUTED_EXPERTS = 6              # keep 6 to limit active parameters (lower FLOPs than 8)
-DYNMOE_THRESHOLD_INIT = -0.08 #-0.04 #-0.02, -0.03, -0.05        # was 0.05 – sigmoid(-0.5)=0.38, ensures experts activate from start
+ADAPTIVE_AUDIT_STEPS = 50          # was 10 – prevents premature expert removal, allows bias stabilisation
+MAX_ROUTED_EXPERTS = 3              # keep 6 to limit active parameters (lower FLOPs than 8)
+DYNMOE_THRESHOLD_INIT = 0.5 #-0.02 #0.03 #-0.04 #-0.02, -0.03, -0.05 -0.08       # was 0.05 – sigmoid(-0.5)=0.38, ensures experts activate from start
+SPARSITY_ALPHA = 0.02               # coefficient for sparsity penalty in auxiliary loss
 BIAS_UPDATE_RATE = 0.001             # was 0.001 – stronger bias adjustments to quickly balance load
 
 # DYNMOE_THRESHOLD_INIT reduce + BIAS_UPDATE_RATE reduce -> reduce Maxvio & Perplexity & increase Active Params
@@ -177,8 +191,10 @@ class DeepseekConfig(PretrainedConfig):
         self.rope_theta = rope_theta
         self.rope_scaling = rope_scaling
         self._rope_scaling_validation()
+        self._attn_implementation = kwargs.get("_attn_implementation", "sdpa")
         self.attention_bias = attention_bias
         self.attention_dropout = attention_dropout
+        self.sparsity_alpha = kwargs.get("sparsity_alpha", SPARSITY_ALPHA)
         
         # DYNMoE specific parameters
         self.max_routed_experts = MAX_ROUTED_EXPERTS
