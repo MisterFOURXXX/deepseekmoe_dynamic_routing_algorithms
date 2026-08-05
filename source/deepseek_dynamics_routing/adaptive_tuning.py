@@ -7,7 +7,7 @@ sys.path.insert(0, os.getcwd())     # Ensure the repo root is on sys.path
 import math
 from transformers import TrainerCallback
 
-ADAPTIVE_AUDIT_STEPS = 10
+ADAPTIVE_AUDIT_STEPS = 100
 
 class AdaptiveExpertTuningCallback(TrainerCallback):
     """

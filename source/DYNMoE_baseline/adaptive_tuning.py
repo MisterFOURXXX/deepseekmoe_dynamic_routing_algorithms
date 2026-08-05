@@ -7,16 +7,10 @@ sys.path.insert(0, os.getcwd())     # Ensure the repo root is on sys.path
 import math
 from transformers import TrainerCallback
 
-ADAPTIVE_AUDIT_STEPS = 10
+ADAPTIVE_AUDIT_STEPS = 100
 
+# ====================== ADAPTIVE TUNING CALLBACK ======================
 class AdaptiveExpertTuningCallback(TrainerCallback):
-    """
-    Callback that triggers adaptive tuning on all modules that have an
-    `adaptive_tune()` method (e.g., MoEGate / DynamicMoEGate). It then
-    synchronises experts by calling `sync_experts()` on any module that
-    provides it (e.g., DeepseekMoE / DynMoEMLP).
-    Works with any model structure by scanning all submodules.
-    """
     def __init__(self, audit_steps: int = ADAPTIVE_AUDIT_STEPS):
         self.audit_steps = audit_steps
         self.global_step = 0
@@ -28,20 +22,10 @@ class AdaptiveExpertTuningCallback(TrainerCallback):
 
     def _apply_tuning(self, model):
         unwrapped = model.module if hasattr(model, 'module') else model
-
-        # 1. Call adaptive_tune on all gates that support it
         tuned_count = 0
         for module in unwrapped.modules():
             if hasattr(module, 'adaptive_tune'):
                 module.adaptive_tune()
                 tuned_count += 1
-
-        # 2. Sync experts on all MoE modules that have sync_experts
-        sync_count = 0
-        for module in unwrapped.modules():
-            if hasattr(module, 'sync_experts'):
-                module.sync_experts()
-                sync_count += 1
-
         if tuned_count > 0:
-            print(f"[DYNMoE Adaptive] Tuned {tuned_count} MoE layers, synced {sync_count} MoE modules")
+            print(f"[DYNMoE] Tuned {tuned_count} MoE layers")

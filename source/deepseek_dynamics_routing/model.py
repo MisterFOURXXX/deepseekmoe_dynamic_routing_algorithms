@@ -73,6 +73,7 @@ if torch.cuda.is_available():
 from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.config import (
     ADAPTIVE_AUDIT_STEPS,       # was 10 – prevents premature expert removal, allows bias stabilisation
     MAX_ROUTED_EXPERTS,         # keep 6 to limit active parameters (lower FLOPs than 8)
+    MIN_ROUTED_EXPERTS,
     DYNMOE_THRESHOLD_INIT,      #-0.02 #0.03 #-0.04 #-0.02, -0.03, -0.05 -0.08       # was 0.05 – sigmoid(-0.5)=0.38, ensures experts activate from start
     SPARSITY_ALPHA,             # coefficient for sparsity penalty in auxiliary loss
     BIAS_UPDATE_RATE,           # was 0.001 – stronger bias adjustments to quickly balance load
@@ -317,184 +318,143 @@ class DeepseekMLP(nn.Module):
 # MoEGate (Top-Any + Adaptive) with Sparsity Regularization ####################################################################
 class MoEGate(nn.Module):
     """
-    DYNMoE Top‑Any Gating with Loss‑Free Balancing and Sparsity Regularization.
-    Replaces the fixed top‑k router of DeepSeekMoE.
+    DYNMoE Top‑Any Gating with Resource-Aware Adaptive Tuning.
+    Optimized for minimal memory and compute footprint.
     """
     def __init__(self, config):
         super().__init__()
         self.config = config
         self.n_routed_experts = config.n_routed_experts
         self.hidden_size = config.hidden_size
+        self.min_routed_experts = config.min_routed_experts
+        self.max_routed_experts = config.max_routed_experts
 
-        # Gating matrix W_g (expert centroids)
         self.weight = nn.Parameter(torch.empty((self.n_routed_experts, self.hidden_size)))
-        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        nn.init.xavier_uniform_(self.weight, gain=0.5)
 
-        # Trainable per‑expert thresholds G_j (sigmoid space)
-        self.thresholds = nn.Parameter(torch.full((self.n_routed_experts,), DYNMOE_THRESHOLD_INIT))
-
-        # Loss‑Free Balancing: per‑expert biases b_i (initialised to 0)
+        self.thresholds = nn.Parameter(torch.full((self.n_routed_experts,), config.threshold_init))
         self.biases = nn.Parameter(torch.zeros(self.n_routed_experts), requires_grad=False)
 
-        # Adaptive tuning records
-        self.register_buffer('routing_records', torch.zeros(self.n_routed_experts))  # R_E
-        self.register_buffer('dropped_embeddings', torch.zeros(self.hidden_size))    # R_S
+        self.register_buffer('routing_records', torch.zeros(self.n_routed_experts))
+        self.register_buffer('dropped_embeddings', torch.zeros(self.hidden_size))
         self.audit_counter = 0
-        self.audit_interval = ADAPTIVE_AUDIT_STEPS
-
-        # Store the indices of currently active experts (used to sync experts list)
+        self.audit_interval = config.adaptive_audit_steps
         self.register_buffer('active_indices', torch.arange(self.n_routed_experts))
 
-        # Coefficient for sparsity penalty
-        self.sparsity_alpha = getattr(config, 'sparsity_alpha', SPARSITY_ALPHA)
+        self.sparsity_alpha = config.sparsity_alpha
+        self._aux_step_counter = 0   # for infrequent aux loss
 
     def forward(self, hidden_states):
         bsz, seq_len, h = hidden_states.shape
         x = hidden_states.view(-1, h)
 
-        # Affinity computation (cosine similarity) – Eq. (2) in the approach
         norm_x = F.normalize(x, p=2, dim=-1)
         norm_w = F.normalize(self.weight, p=2, dim=-1)
-        s = torch.matmul(norm_x, norm_w.T)                     # raw affinity scores s_j
+        s = torch.einsum('nd,ed->ne', norm_x, norm_w)
 
-        # Apply expert biases (Loss‑Free Balancing) – Eq. (3) in the paper
         biased_s = s + self.biases
+        g = (torch.sigmoid(biased_s) > torch.sigmoid(self.thresholds)).float()
 
-        # Gating decision using biased scores – Eq. (3) in the approach
-        g = torch.sign(torch.sigmoid(biased_s) - torch.sigmoid(self.thresholds))
-        g = (g > 0).float()                                    # binary activation g_j
-
-        # Dynamic activation count k_r – Eq. (4) in the approach
         k_r = g.sum(dim=-1, keepdim=True)
 
-        # === FIX 3: Handle zero‑activation tokens during training (same as test‑time safeguard) ===
-        # This ensures every token activates at least one expert, preventing dead routes.
+        # Vectorised fallback
         zero_mask = (k_r.squeeze(-1) == 0)
         if zero_mask.any():
-            # Fallback to top‑1 expert for those tokens
-            max_idx = torch.argmax(biased_s, dim=-1)   # use biased_s or s; biased_s includes biases
-            for i in zero_mask.nonzero(as_tuple=True)[0]:
-                g[i, :] = 0
-                g[i, max_idx[i]] = 1.0
+            max_idx = torch.argmax(biased_s, dim=-1)
+            g_zero = torch.zeros_like(g)
+            g_zero.scatter_(1, max_idx.unsqueeze(1), 1.0)
+            g = torch.where(zero_mask.unsqueeze(1), g_zero, g)
             k_r = g.sum(dim=-1, keepdim=True)
-
-        # Now clamp only to avoid division by zero (should never be zero after fallback)
         k_r = k_r.clamp(min=1.0)
 
-        # Straight‑through estimator (gradients pass through sigmoid)
         if self.training:
             soft_g = torch.sigmoid(biased_s) - torch.sigmoid(self.thresholds)
             g = g + (soft_g - soft_g.detach())
 
         topk_weight = g / k_r
+        token_counts = g.sum(dim=0)
 
-        # For compatibility: indices of activated experts (not used in unweighted average)
-        topk_idx = torch.arange(self.n_routed_experts, device=g.device).unsqueeze(0).expand_as(g)
-
-        # === FIX 2: Compute token counts per expert for bias update ===
-        token_counts = g.sum(dim=0)   # shape (E,)
-
-        # Update adaptive records (only during training)
         if self.training:
             self.audit_counter += 1
             with torch.no_grad():
-                batch_activ = g.mean(dim=0) * bsz * seq_len
-                self.routing_records += batch_activ
-
+                self.routing_records += g.mean(dim=0) * bsz * seq_len
                 dropped_mask = (g.sum(dim=-1) == 0)
                 if dropped_mask.any():
-                    dropped_emb = x[dropped_mask].mean(dim=0)
-                    self.dropped_embeddings += dropped_emb
+                    self.dropped_embeddings += x[dropped_mask].mean(dim=0)
 
-        # Auxiliary loss includes sparsity penalty (pass k_r for sparsity term)
-        aux_loss = self._sparse_simple_loss(k_r) if self.training else None
-        # Return token_counts so that the MoE layer can call update_biases
-        return topk_idx, topk_weight, aux_loss, token_counts
+        # Compute aux loss only every 4 steps
+        self._aux_step_counter += 1
+        if self.training and self._aux_step_counter % 4 == 0:
+            aux_loss = self._compute_loss(k_r)
+        else:
+            aux_loss = None
+        if self._aux_step_counter > 1000:
+            self._aux_step_counter = 0
 
-    def _sparse_simple_loss(self, k_r):
-        """
-        Sparse‑and‑Simple Auxiliary Loss + Sparsity Penalty.
-        L_aux = diversity + simplicity + sparsity_alpha * mean(k_r)
-        """
+        # Do NOT return topk_idx – it's unused
+        return topk_weight, aux_loss, token_counts
+
+    def _compute_loss(self, k_r):
         Wg = self.weight
         gram = torch.matmul(Wg, Wg.T)
-        diversity = torch.norm(gram - torch.eye(self.n_routed_experts, device=Wg.device), p='fro') ** 2
-        simplicity = torch.mean(torch.norm(Wg, p=2, dim=1))
-        # Sparsity: average number of activated experts per token (over the batch)
-        sparsity = k_r.mean()   # scalar
-        return diversity + simplicity + self.sparsity_alpha * sparsity
+        identity = torch.eye(self.n_routed_experts, device=Wg.device)
+        diversity = torch.mean((gram - identity) ** 2)
+        simplicity = torch.mean(torch.abs(Wg))
+        sparsity = 0.5 * k_r.mean()
+        return diversity + 0.1 * simplicity + self.sparsity_alpha * sparsity
 
     def update_biases(self, token_counts_per_expert):
-        """
-        Loss‑Free Balancing bias update (Algorithm 1).
-        CORRECTED: b_i = b_i + u * sign(avg - c_i)   (increase bias for underused experts)
-        """
         if not self.training:
             return
         total = token_counts_per_expert.sum().float()
         avg = total / self.n_routed_experts
         violation = token_counts_per_expert - avg
         with torch.no_grad():
-            # The correct sign: add bias when expert is underused (c_i < avg)
-            self.biases -= BIAS_UPDATE_RATE * torch.sign(violation)   # negative sign
+            self.biases -= self.config.bias_update_rate * torch.sign(violation)
 
     def adaptive_tune(self):
-        """
-        Adaptive expert tuning: remove all dead experts (R_E[j]==0) and add a new one (R_S != 0).
-        Returns the list of indices that should remain active.
-        """
         if self.audit_counter < self.audit_interval:
             return self.active_indices
 
         with torch.no_grad():
-            # ---- Remove all experts with zero activations ----
-            # Keep at least 2 experts to avoid collapse
-            if self.n_routed_experts > 2:
-                active_mask = (self.routing_records > 0)
-                # Force keep at least 2 experts (the ones with highest records if all zero)
-                if not active_mask.any():
-                    # All zero – keep the top 2 by record (or random)
-                    _, top_idx = torch.topk(self.routing_records, k=min(2, self.n_routed_experts))
-                    active_mask[top_idx] = True
-                # Keep only active experts
-                keep_indices = active_mask.nonzero(as_tuple=True)[0]
-                # Ensure at least 2 remain
-                if len(keep_indices) < 2:
-                    # Add the experts with highest records to reach 2
-                    remaining = self.n_routed_experts - len(keep_indices)
-                    _, add_idx = torch.topk(self.routing_records, k=remaining + 1)
-                    keep_indices = torch.cat([keep_indices, add_idx[~torch.isin(add_idx, keep_indices)]])
-                    keep_indices = keep_indices[:2]
-                keep_indices = keep_indices.sort()[0]
-            else:
-                keep_indices = torch.arange(self.n_routed_experts, device=self.weight.device)
+            activation_threshold = 0.01 * self.audit_interval
+            active_mask = (self.routing_records > activation_threshold)
 
-            # Update all parameters to keep only the active experts
+            # Keep at least min_routed_experts
+            if active_mask.sum() < self.min_routed_experts:
+                _, top_idx = torch.topk(self.routing_records, k=self.min_routed_experts)
+                active_mask[top_idx] = True
+
+            # Ensure at least one expert
+            if not active_mask.any():
+                _, top_idx = torch.topk(self.routing_records, k=1)
+                active_mask[top_idx] = True
+
+            keep_indices = active_mask.nonzero(as_tuple=True)[0]
+
             self.weight.data = self.weight.data[keep_indices]
             self.thresholds.data = self.thresholds.data[keep_indices]
             self.biases.data = self.biases.data[keep_indices]
             self.routing_records = self.routing_records[keep_indices]
             self.n_routed_experts = len(keep_indices)
             self.active_indices = keep_indices
-            print(f"[DYNMoE Adaptive] Removed dead experts → {self.n_routed_experts} routed experts remain")
 
-            # ---- Add a new expert for neglected patterns (R_S) ----
-            if torch.norm(self.dropped_embeddings) > 1e-6 and self.n_routed_experts < self.config.max_routed_experts:
-                # Create new expert with weight = normalized R_S
+            # Add new expert if needed (with higher threshold)
+            dropped_norm = torch.norm(self.dropped_embeddings)
+            if dropped_norm > 0.1 and self.n_routed_experts < self.max_routed_experts:
                 new_w = F.normalize(self.dropped_embeddings.unsqueeze(0), p=2, dim=-1)
-                # Append to existing weight matrix
                 self.weight.data = torch.cat([self.weight.data, new_w], dim=0)
-                self.thresholds.data = torch.cat([self.thresholds.data,
-                                                  torch.zeros(1, device=self.thresholds.device)], dim=0)
-                self.biases.data = torch.cat([self.biases.data,
-                                              torch.zeros(1, device=self.biases.device)], dim=0)
-                self.routing_records = torch.cat([self.routing_records,
-                                                  torch.zeros(1, device=self.routing_records.device)], dim=0)
+                self.thresholds.data = torch.cat([
+                    self.thresholds.data,
+                    torch.full((1,), self.config.threshold_init, device=self.thresholds.device)
+                ], dim=0)
+                self.biases.data = torch.cat([self.biases.data, torch.zeros(1, device=self.biases.device)], dim=0)
+                self.routing_records = torch.cat([self.routing_records, torch.zeros(1, device=self.routing_records.device)], dim=0)
                 self.n_routed_experts += 1
-                # Update active_indices to include the new expert (index is last)
-                new_idx = torch.tensor([self.n_routed_experts - 1], device=self.weight.device)
-                self.active_indices = torch.cat([self.active_indices, new_idx])
-                print(f"[DYNMoE Adaptive] Added new expert → {self.n_routed_experts} routed experts")
+                self.active_indices = torch.cat([
+                    self.active_indices,
+                    torch.tensor([self.n_routed_experts - 1], device=self.weight.device)
+                ])
 
             # Reset counters
             self.routing_records.zero_()
@@ -525,45 +485,38 @@ class AddAuxiliaryLoss(torch.autograd.Function):
 # REVISED DeepseekMoE #####################################
 # REVISED DeepseekMoE #####################################
 class DeepseekMoE(nn.Module):
-    """
-    A mixed expert module containing shared experts.
-    """
     def __init__(self, config):
         super().__init__()
         self.config = config
-        self.num_experts_per_tok = config.num_experts_per_tok
         self.n_routed_experts = config.n_routed_experts
         self.n_shared_experts = config.n_shared_experts
 
-        # Routed fine-grained experts – initialised with the given number
+        # ---- Dynamic Gate ----
+        self.gate = MoEGate(config)
+
+        # Routed experts (initial count = n_routed_experts)
         self.experts = nn.ModuleList([
             DeepseekMLP(config, intermediate_size=config.moe_intermediate_size)
             for _ in range(config.n_routed_experts)
         ])
-        self.gate = MoEGate(config)
 
-        # Shared experts (always active - unchanged)
-        if self.n_shared_experts is not None:
+        # Shared experts (reduced to 1, with size cap)
+        if self.n_shared_experts is not None and self.n_shared_experts > 0:
             inter_size = config.moe_intermediate_size * self.n_shared_experts
+            inter_size = min(inter_size, config.hidden_size * 2)   # cap memory
             self.shared_experts = DeepseekMLP(config, intermediate_size=inter_size)
 
     def sync_experts(self):
-        """
-        Rebuild self.experts to match the gate's active expert indices.
-        This must be called after adaptive_tune() to keep the ModuleList in sync.
-        """
-        active = self.gate.active_indices  # tensor of indices that are currently active
-        # Ensure the active indices are within the range of the stored experts
-        # (we may have created new experts in the gate, but not yet added to this list)
-        current_expert_count = len(self.experts)
+        """Rebuild self.experts to match gate's active indices."""
+        active = self.gate.active_indices
+        current_count = len(self.experts)
         needed = int(active.max().item()) + 1
-        if needed > current_expert_count:
-            # Add new expert modules up to the needed size
-            for _ in range(needed - current_expert_count):
+        if needed > current_count:
+            for _ in range(needed - current_count):
                 self.experts.append(
                     DeepseekMLP(self.config, intermediate_size=self.config.moe_intermediate_size)
                 )
-        # Now rebuild the list keeping only the active experts
+        # Keep only active experts
         new_experts = nn.ModuleList([self.experts[i] for i in active.tolist()])
         self.experts = new_experts
         self.n_routed_experts = len(active)
@@ -571,44 +524,36 @@ class DeepseekMoE(nn.Module):
     def forward(self, hidden_states):
         identity = hidden_states
         orig_shape = hidden_states.shape
-
-        # Get gate outputs including token_counts
-        topk_idx, topk_weight, aux_loss, token_counts = self.gate(hidden_states)
-
-        # === FIX 2: Update biases using token counts ===
+    
+        topk_weight, aux_loss, token_counts = self.gate(hidden_states)   # only 3 values
+    
         if self.training:
             self.gate.update_biases(token_counts)
-
+    
         x = hidden_states.view(-1, hidden_states.shape[-1])
-
-        # === FIX 1: Use active_indices to map gate indices to actual experts ===
         y = torch.zeros_like(x)
-        active_indices = self.gate.active_indices  # shape (E,)
-        # Iterate over experts that have at least one token
+        active_indices = self.gate.active_indices
+    
         expert_used = (topk_weight.sum(dim=0) > 0).nonzero(as_tuple=True)[0]
         for i in expert_used:
-            # i is the gate's expert ID; map to actual expert index
             actual_idx = active_indices[i].item()
-            expert_weight = topk_weight[:, i:i+1]  # [N, 1]
+            expert_weight = topk_weight[:, i:i+1]
             expert_out = self.experts[actual_idx](x)
             y = y + expert_out * expert_weight
-
+    
         y = y.view(*orig_shape)
-
+    
         if self.training and aux_loss is not None:
-            y = AddAuxiliaryLoss.apply(y, aux_loss)
-
-        # Shared experts + residual (unchanged)
+            y = AddAuxiliaryLoss.apply(y, aux_loss * self.config.aux_loss_alpha)
+    
         if hasattr(self, 'shared_experts'):
             y = y + self.shared_experts(identity)
         y = y + identity
-
         return y
 
     @torch.no_grad()
     def moe_infer(self, x, flat_expert_indices, flat_expert_weights):
-        # This method is kept for compatibility; it uses num_experts_per_tok which is ignored in our dynamic routing.
-        # For inference, the forward path above is used, so this is not called.
+        # Kept for compatibility – not used in this dynamic routing
         expert_cache = torch.zeros_like(x)
         idxs = flat_expert_indices.argsort()
         tokens_per_expert = flat_expert_indices.bincount().cpu().numpy().cumsum(0)
@@ -624,7 +569,6 @@ class DeepseekMoE(nn.Module):
             expert_out.mul_(flat_expert_weights[idxs[start_idx:end_idx]])
             expert_cache.scatter_reduce_(0, exp_token_idx.view(-1, 1).repeat(1, x.shape[-1]), expert_out, reduce='sum')
         return expert_cache
-
 
 # Copied from transformers.models.llama.modeling_llama.repeat_kv
 def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
