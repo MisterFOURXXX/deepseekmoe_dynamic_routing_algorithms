@@ -9,7 +9,6 @@ from transformers import TrainerCallback
 
 ADAPTIVE_AUDIT_STEPS = 100
 
-# ====================== ADAPTIVE TUNING CALLBACK ======================
 class AdaptiveExpertTuningCallback(TrainerCallback):
     def __init__(self, audit_steps: int = ADAPTIVE_AUDIT_STEPS):
         self.audit_steps = audit_steps

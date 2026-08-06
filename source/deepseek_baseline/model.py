@@ -51,6 +51,17 @@ if is_torch_fx_available():
         import torch.fx
         _prepare_4d_causal_attention_mask = torch.fx.wrap(_prepare_4d_causal_attention_mask)
 
+# Verify it works:
+import torch
+print(f"PyTorch version: {torch.__version__}")
+print(f"CUDA available: {torch.cuda.is_available()}")
+
+# Test if flash attention is available through PyTorch
+if torch.cuda.is_available():
+    from torch.backends.cuda import flash_sdp_enabled, mem_efficient_sdp_enabled
+    print(f"Flash SDP enabled: {flash_sdp_enabled()}")
+    print(f"Memory efficient SDP enabled: {mem_efficient_sdp_enabled()}")
+
 """
 coding=utf-8
 Copyright 2023 DeepSeek-AI and The HuggingFace Inc. team. All rights reserved.
