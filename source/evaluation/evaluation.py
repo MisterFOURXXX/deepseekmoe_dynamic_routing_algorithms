@@ -15,18 +15,10 @@ from torch.utils.flop_counter import FlopCounterMode
 
 def evaluate_model(model, tokenizer, test_file, device, **kwargs):
     """
-    Evaluate a model on a test file.
-
-    Args:
-        model: The loaded PyTorch model.
-        tokenizer: The tokenizer.
-        test_file: Path to the test sequences file.
-        device: torch device.
-        **kwargs: Override default parameters: max_seq_len, eval_batch_size,
-                  gen_max_new_tokens, repetition_penalty.
-
-    Returns:
-        dict: Results.
+    Unified evaluation for all three architectures:
+      - Baseline DeepSeekMoE
+      - Pure DYNMoE
+      - Prototype (DeepSeekMoE + DYNMoE routing)
     """
     # Default parameters
     max_seq_len = kwargs.get('max_seq_len', 256)
@@ -37,16 +29,78 @@ def evaluate_model(model, tokenizer, test_file, device, **kwargs):
     model.eval()
     unwrapped = model.module if hasattr(model, 'module') else model
 
-    # Determine architecture type
-    is_dynmoe = hasattr(unwrapped.config, 'model_type') and unwrapped.config.model_type == "dynmoe"
-    if not is_dynmoe:
-        for layer in unwrapped.model.layers:
-            if hasattr(layer, 'mlp') and hasattr(layer.mlp, 'gate'):
-                if hasattr(layer.mlp.gate, 'update_biases'):
-                    is_dynmoe = True
-                    break
+    # ------------------------------------------------------------
+    # 1. Determine architecture type
+    # ------------------------------------------------------------
+    is_pure_dynmoe = hasattr(unwrapped.config, 'model_type') and unwrapped.config.model_type == "dynmoe"
+    is_routing_prototype = False
+    if not is_pure_dynmoe:
+        # Check for the custom MoEGate used in the prototype (has update_biases)
+        for module in unwrapped.modules():
+            if hasattr(module, 'update_biases') and hasattr(module, 'thresholds'):
+                is_routing_prototype = True
+                break
+    # For baseline, both flags remain False
 
-    # Load prompts and references
+    # Determine number of experts (works for all)
+    n_experts = getattr(unwrapped.config, 'n_routed_experts', None) or getattr(unwrapped.config, 'num_experts', 8)
+
+    # ------------------------------------------------------------
+    # 2. Expert‑balance hook (handles all gate types)
+    # ------------------------------------------------------------
+    class ExpertHook:
+        def __init__(self, n_exp):
+            self.global_counts = np.zeros(n_exp, dtype=np.float64)
+            self.batch_vios = []
+            self.batch_counts = None
+            self.is_pure_dynmoe = is_pure_dynmoe
+            self.is_routing = is_routing_prototype
+
+        def __call__(self, module, inp, out):
+            # out is the tuple returned by the gate's forward
+            if self.is_pure_dynmoe:
+                # Pure DYNMoE gate returns (topk_idx, topk_weight, aux_loss)
+                topk_weight = out[1]      # shape [B*S, K]
+                counts = (topk_weight > 1e-8).float().sum(dim=0).detach().cpu().numpy()
+            elif self.is_routing:
+                # Routing prototype gate returns (topk_weight, aux_loss, token_counts)
+                topk_weight = out[0]
+                counts = (topk_weight > 1e-8).float().sum(dim=0).detach().cpu().numpy()
+            else:
+                # Baseline DeepSeekMoE gate returns (topk_idx, topk_weight, aux_loss)
+                topk_idx = out[0]
+                # In eval, topk_idx is a tensor of indices; flatten and bincount
+                counts = torch.bincount(topk_idx.flatten(), minlength=module.n_routed_experts).cpu().numpy()
+
+            if self.batch_counts is None:
+                self.batch_counts = counts
+            else:
+                self.batch_counts += counts
+            self.global_counts += counts
+
+        def reset_batch(self):
+            self.batch_counts = None
+
+    hook_obj = ExpertHook(n_experts)
+    hooks = []
+
+    # Attach hooks to all gate modules
+    for module in unwrapped.modules():
+        if is_pure_dynmoe and module.__class__.__name__ == "DynamicMoEGate":
+            hooks.append(module.register_forward_hook(hook_obj))
+        elif is_routing_prototype and hasattr(module, 'update_biases') and hasattr(module, 'thresholds'):
+            # This is the custom MoEGate in the prototype
+            hooks.append(module.register_forward_hook(hook_obj))
+        elif not is_pure_dynmoe and not is_routing_prototype and module.__class__.__name__ == "MoEGate":
+            # Baseline DeepSeekMoE gate
+            hooks.append(module.register_forward_hook(hook_obj))
+
+    print(f"Attached {len(hooks)} expert‑balance hooks")
+
+    # ------------------------------------------------------------
+    # 3. Load test data and prepare dataloader
+    # ------------------------------------------------------------
+    # Read user utterances and references
     user_utterances = []
     references = []
     current_user = None
@@ -65,7 +119,7 @@ def evaluate_model(model, tokenizer, test_file, device, **kwargs):
 
     print(f"Loaded {len(user_utterances)} generation samples")
 
-    # Prepare dataset for perplexity
+    # Dataset for perplexity
     dataset = load_dataset("text", data_files={"test": test_file})["test"]
     tokenized = dataset.map(
         lambda ex: tokenizer(ex["text"], truncation=True, max_length=max_seq_len,
@@ -74,11 +128,9 @@ def evaluate_model(model, tokenizer, test_file, device, **kwargs):
         remove_columns=["text"],
         num_proc=2
     )
-
     data_collator = DataCollatorForLanguageModeling(
         tokenizer=tokenizer, mlm=False, pad_to_multiple_of=8
     )
-
     loader = DataLoader(
         tokenized,
         batch_size=eval_batch_size,
@@ -88,47 +140,9 @@ def evaluate_model(model, tokenizer, test_file, device, **kwargs):
         pin_memory=True
     )
 
-    # Expert balance hook
-    n_experts = unwrapped.config.n_routed_experts if not is_dynmoe else unwrapped.config.num_experts
-
-    class ExpertHook:
-        def __init__(self, n_exp):
-            self.global_counts = np.zeros(n_exp, dtype=np.float64)
-            self.batch_vios = []
-            self.batch_counts = None
-            self.is_dynmoe = is_dynmoe
-
-        def __call__(self, module, inp, out):
-            if self.is_dynmoe:
-                weights = out[1]
-                counts = (weights > 1e-8).float().sum(dim=0).detach().cpu().numpy()
-            else:
-                topk_idx = out[0]
-                counts = torch.bincount(topk_idx.flatten(), minlength=module.n_routed_experts).cpu().numpy()
-            if self.batch_counts is None:
-                self.batch_counts = counts
-            else:
-                self.batch_counts += counts
-            self.global_counts += counts
-
-        def reset_batch(self):
-            self.batch_counts = None
-
-    hook_obj = ExpertHook(n_experts)
-    hooks = []
-
-    if is_dynmoe:
-        for module in unwrapped.modules():
-            if module.__class__.__name__ == "DynamicMoEGate":
-                hooks.append(module.register_forward_hook(hook_obj))
-    else:
-        for layer in unwrapped.model.layers:
-            if hasattr(layer, "mlp") and hasattr(layer.mlp, "gate"):
-                hooks.append(layer.mlp.gate.register_forward_hook(hook_obj))
-
-    print(f"Attached {len(hooks)} hooks")
-
-    # Compute perplexity, MaxVIO, FLOPs
+    # ------------------------------------------------------------
+    # 4. Perplexity, MaxVIO, FLOPs
+    # ------------------------------------------------------------
     total_loss = 0.0
     total_tokens = 0
     flop_counter = FlopCounterMode(display=False)
@@ -152,22 +166,28 @@ def evaluate_model(model, tokenizer, test_file, device, **kwargs):
                 total_loss += loss.sum().item()
                 total_tokens += (shift_labels != -100).sum().item()
 
+                # Batch‑level MaxVIO
                 if hook_obj.batch_counts is not None:
                     tot = hook_obj.batch_counts.sum()
                     if tot > 0:
-                        expected = tot / len(hook_obj.batch_counts)
-                        batch_max = np.max(np.abs(hook_obj.batch_counts - expected) / (expected + 1e-12))
+                        n_exp = len(hook_obj.batch_counts)
+                        expected = tot / n_exp
+                        # Use bounded MaxVIO: max(|diff|) / total
+                        batch_max = np.max(np.abs(hook_obj.batch_counts - expected)) / tot
                         hook_obj.batch_vios.append(batch_max)
 
+    # Remove hooks
     for h in hooks:
         h.remove()
 
     perplexity = math.exp(total_loss / total_tokens) if total_tokens > 0 else float('inf')
 
+    # Global MaxVIO
     gs = hook_obj.global_counts.sum()
     if gs > 0:
-        expected = gs / n_experts
-        global_vio = np.max(np.abs(hook_obj.global_counts - expected) / (expected + 1e-12))
+        n_exp = len(hook_obj.global_counts)
+        expected = gs / n_exp
+        global_vio = np.max(np.abs(hook_obj.global_counts - expected)) / gs
     else:
         global_vio = 0.0
 
@@ -178,24 +198,33 @@ def evaluate_model(model, tokenizer, test_file, device, **kwargs):
     measured_flops = flop_counter.get_total_flops()
     avg_flops = measured_flops / 1e9 if measured_flops else 0.0
 
-    # Active parameters
-    if is_dynmoe:
+    # ------------------------------------------------------------
+    # 5. Active parameters & average activated experts
+    # ------------------------------------------------------------
+    if is_pure_dynmoe or is_routing_prototype:
+        # For DYNMoE variants, compute average activated experts per token
         total_activations = hook_obj.global_counts.sum()
-        avg_activated = total_activations / (total_tokens * len(unwrapped.transformer.decoder.layers) + 1e-12)
-        expert_params = 2 * unwrapped.config.moe_intermediate_size * unwrapped.config.hidden_size \
-                        + unwrapped.config.moe_intermediate_size + unwrapped.config.hidden_size
-        n_shared = getattr(unwrapped.config, 'n_shared_experts', 0)
-        num_moe_layers = len([l for l in unwrapped.config.replace_layers if l < unwrapped.config.num_hidden_layers])
-        active_params = num_moe_layers * (n_shared + avg_activated) * expert_params
+        num_moe_layers = len([m for m in unwrapped.modules() if isinstance(m, (DynamicMoEGate, type(unwrapped.config)) and hasattr(m, 'thresholds'))])
+        # Count MoE layers from config or replace_layers
+        if hasattr(unwrapped.config, 'replace_layers'):
+            num_moe_layers = len(unwrapped.config.replace_layers)
+        else:
+            num_moe_layers = len([layer for layer in unwrapped.model.layers if hasattr(layer.mlp, 'gate')])
+        avg_activated = total_activations / (total_tokens * num_moe_layers) if total_tokens > 0 else 0.0
+        expert_params = 3 * unwrapped.config.moe_intermediate_size * unwrapped.config.hidden_size
+        active_params = num_moe_layers * avg_activated * expert_params
     else:
-        total_activated = unwrapped.config.num_experts_per_tok
+        # Baseline: fixed top‑k
+        avg_activated = getattr(unwrapped.config, 'num_experts_per_tok', 2)
         expert_params = 3 * unwrapped.config.moe_intermediate_size * unwrapped.config.hidden_size
         n_shared = getattr(unwrapped.config, 'n_shared_experts', 0)
-        num_moe_layers = len(unwrapped.model.layers)
-        active_params = num_moe_layers * (n_shared + total_activated) * expert_params
-        avg_activated = None
+        num_moe_layers = len([layer for layer in unwrapped.model.layers if hasattr(layer.mlp, 'gate')])
+        active_params = num_moe_layers * (n_shared + avg_activated) * expert_params
+        avg_activated = None  # Not applicable for fixed top‑k
 
-    # Generation & metrics
+    # ------------------------------------------------------------
+    # 6. Generation and quality metrics (ROUGE, BLEU)
+    # ------------------------------------------------------------
     scorer = rouge_scorer.RougeScorer(["rouge1", "rouge2", "rougeL"], use_stemmer=True)
     smooth = SmoothingFunction().method4
 
@@ -271,7 +300,9 @@ def evaluate_model(model, tokenizer, test_file, device, **kwargs):
     avg_rouge2 = np.mean(rouge2_scores) if rouge2_scores else 0
     avg_rougeL = np.mean(rougeL_scores) if rougeL_scores else 0
 
-    # Build results dictionary
+    # ------------------------------------------------------------
+    # 7. Assemble results
+    # ------------------------------------------------------------
     results = {
         "Average TPS (generation)": f"{avg_tps:.1f}",
         "Average CPU Usage (%)": f"{avg_cpu:.1f}",
@@ -279,17 +310,15 @@ def evaluate_model(model, tokenizer, test_file, device, **kwargs):
         "Average System Memory (GB)": f"{avg_smem:.2f}",
         "Average GPU Memory (GB)": f"{avg_gmem:.2f}",
         "Average FLOPs (GFLOPS)": f"{avg_flops:.1f}",
-        "Average Perplexity": f"{perplexity:.2f}",
+        "Perplexity": f"{perplexity:.2f}",
         "Average BLEU": f"{avg_bleu:.4f}",
         "Average ROUGE-1": f"{avg_rouge1:.4f}",
         "Average ROUGE-2": f"{avg_rouge2:.4f}",
         "Average ROUGE-L": f"{avg_rougeL:.4f}",
-        "Average MaxVIO_global": f"{global_vio:.4f}",
-        "Lowest MaxVIO_global": f"{global_vio:.4f}",
-        "Highest MaxVIO_global": f"{global_vio:.4f}",
-        "Average MaxVIO_batch": f"{avg_batch_vio:.4f}",
-        "Lowest MaxVIO_batch": f"{min_batch_vio:.4f}",
-        "Highest MaxVIO_batch": f"{max_batch_vio:.4f}",
+        "Global MaxVIO": f"{global_vio:.4f}",
+        "Average Batch MaxVIO": f"{avg_batch_vio:.4f}",
+        "Min Batch MaxVIO": f"{min_batch_vio:.4f}",
+        "Max Batch MaxVIO": f"{max_batch_vio:.4f}",
         "Avg Activated Experts": f"{avg_activated:.2f}" if avg_activated is not None else "N/A",
         "Total Active Parameters (inference)": f"{active_params:,.0f}"
     }
