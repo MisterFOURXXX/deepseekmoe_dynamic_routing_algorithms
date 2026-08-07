@@ -205,20 +205,34 @@ def evaluate_model(model, tokenizer, test_file, device, **kwargs):
     # ------------------------------------------------------------
     # 6. Active parameters & average activated experts
     # ------------------------------------------------------------
+    num_moe_layers = len(hooks)   # each hook corresponds to one MoE layer
+
     if is_pure_dynmoe or is_routing_prototype:
-        # For DYNMoE variants, compute average activated experts per token
         total_activations = hook_obj.global_counts.sum()
-        # Use the number of MoE layers from hooks
         avg_activated = total_activations / (total_tokens * num_moe_layers) if total_tokens > 0 else 0.0
         expert_params = 3 * unwrapped.config.moe_intermediate_size * unwrapped.config.hidden_size
         active_params = num_moe_layers * avg_activated * expert_params
     else:
-        # Baseline: fixed top‑k
+        # Baseline fixed top‑k
         avg_activated = getattr(unwrapped.config, 'num_experts_per_tok', 2)
         expert_params = 3 * unwrapped.config.moe_intermediate_size * unwrapped.config.hidden_size
         n_shared = getattr(unwrapped.config, 'n_shared_experts', 0)
         active_params = num_moe_layers * (n_shared + avg_activated) * expert_params
-        avg_activated = None  # Not applicable for fixed top‑k
+        avg_activated = None
+    #if is_pure_dynmoe or is_routing_prototype:
+        # For DYNMoE variants, compute average activated experts per token
+        #total_activations = hook_obj.global_counts.sum()
+        # Use the number of MoE layers from hooks
+        #avg_activated = total_activations / (total_tokens * num_moe_layers) if total_tokens > 0 else 0.0
+        #expert_params = 3 * unwrapped.config.moe_intermediate_size * unwrapped.config.hidden_size
+        #active_params = num_moe_layers * avg_activated * expert_params
+    #else:
+        # Baseline: fixed top‑k
+        #avg_activated = getattr(unwrapped.config, 'num_experts_per_tok', 2)
+        #expert_params = 3 * unwrapped.config.moe_intermediate_size * unwrapped.config.hidden_size
+        #n_shared = getattr(unwrapped.config, 'n_shared_experts', 0)
+        #active_params = num_moe_layers * (n_shared + avg_activated) * expert_params
+        #avg_activated = None  # Not applicable for fixed top‑k
 
     # ------------------------------------------------------------
     # 7. Generation and quality metrics (ROUGE, BLEU)
