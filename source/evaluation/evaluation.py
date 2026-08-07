@@ -95,10 +95,14 @@ def evaluate_model(model, tokenizer, test_file, device, **kwargs):
             # Baseline DeepSeekMoE gate
             hooks.append(module.register_forward_hook(hook_obj))
 
-    print(f"Attached {len(hooks)} expert‑balance hooks")
+    # ------------------------------------------------------------
+    # 3. Count MoE layers from attached hooks (works for all)
+    # ------------------------------------------------------------
+    num_moe_layers = len(hooks)
+    print(f"Attached {num_moe_layers} expert‑balance hooks")
 
     # ------------------------------------------------------------
-    # 3. Load test data and prepare dataloader
+    # 4. Load test data and prepare dataloader
     # ------------------------------------------------------------
     # Read user utterances and references
     user_utterances = []
@@ -141,7 +145,7 @@ def evaluate_model(model, tokenizer, test_file, device, **kwargs):
     )
 
     # ------------------------------------------------------------
-    # 4. Perplexity, MaxVIO, FLOPs
+    # 5. Perplexity, MaxVIO, FLOPs
     # ------------------------------------------------------------
     total_loss = 0.0
     total_tokens = 0
@@ -199,17 +203,12 @@ def evaluate_model(model, tokenizer, test_file, device, **kwargs):
     avg_flops = measured_flops / 1e9 if measured_flops else 0.0
 
     # ------------------------------------------------------------
-    # 5. Active parameters & average activated experts
+    # 6. Active parameters & average activated experts
     # ------------------------------------------------------------
     if is_pure_dynmoe or is_routing_prototype:
         # For DYNMoE variants, compute average activated experts per token
         total_activations = hook_obj.global_counts.sum()
-        num_moe_layers = len([m for m in unwrapped.modules() if isinstance(m, (DynamicMoEGate, type(unwrapped.config)) and hasattr(m, 'thresholds'))])
-        # Count MoE layers from config or replace_layers
-        if hasattr(unwrapped.config, 'replace_layers'):
-            num_moe_layers = len(unwrapped.config.replace_layers)
-        else:
-            num_moe_layers = len([layer for layer in unwrapped.model.layers if hasattr(layer.mlp, 'gate')])
+        # Use the number of MoE layers from hooks
         avg_activated = total_activations / (total_tokens * num_moe_layers) if total_tokens > 0 else 0.0
         expert_params = 3 * unwrapped.config.moe_intermediate_size * unwrapped.config.hidden_size
         active_params = num_moe_layers * avg_activated * expert_params
@@ -218,12 +217,11 @@ def evaluate_model(model, tokenizer, test_file, device, **kwargs):
         avg_activated = getattr(unwrapped.config, 'num_experts_per_tok', 2)
         expert_params = 3 * unwrapped.config.moe_intermediate_size * unwrapped.config.hidden_size
         n_shared = getattr(unwrapped.config, 'n_shared_experts', 0)
-        num_moe_layers = len([layer for layer in unwrapped.model.layers if hasattr(layer.mlp, 'gate')])
         active_params = num_moe_layers * (n_shared + avg_activated) * expert_params
         avg_activated = None  # Not applicable for fixed top‑k
 
     # ------------------------------------------------------------
-    # 6. Generation and quality metrics (ROUGE, BLEU)
+    # 7. Generation and quality metrics (ROUGE, BLEU)
     # ------------------------------------------------------------
     scorer = rouge_scorer.RougeScorer(["rouge1", "rouge2", "rougeL"], use_stemmer=True)
     smooth = SmoothingFunction().method4
@@ -301,7 +299,7 @@ def evaluate_model(model, tokenizer, test_file, device, **kwargs):
     avg_rougeL = np.mean(rougeL_scores) if rougeL_scores else 0
 
     # ------------------------------------------------------------
-    # 7. Assemble results
+    # 8. Assemble results
     # ------------------------------------------------------------
     results = {
         "Average TPS (generation)": f"{avg_tps:.1f}",
