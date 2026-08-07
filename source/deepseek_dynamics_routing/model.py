@@ -61,14 +61,9 @@ if is_torch_fx_available():
 
 # Verify it works:
 import torch
-print(f"PyTorch version: {torch.__version__}")
-print(f"CUDA available: {torch.cuda.is_available()}")
 
 # Test if flash attention is available through PyTorch
-if torch.cuda.is_available():
-    from torch.backends.cuda import flash_sdp_enabled, mem_efficient_sdp_enabled
-    print(f"Flash SDP enabled: {flash_sdp_enabled()}")
-    print(f"Memory efficient SDP enabled: {mem_efficient_sdp_enabled()}")
+from torch.backends.cuda import flash_sdp_enabled, mem_efficient_sdp_enabled
 
 from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.config import (
     ADAPTIVE_AUDIT_STEPS,       # was 10 – prevents premature expert removal, allows bias stabilisation
