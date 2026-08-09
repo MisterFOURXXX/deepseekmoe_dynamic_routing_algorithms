@@ -8,15 +8,7 @@ from source.DYNMoE_baseline.model import DynMoEForCausalLM as DynMoEModel
 def load_model_and_tokenizer(model_path):
     """
     Load the correct model class and its tokenizer from a saved checkpoint.
-    
-    Args:
-        model_path (str): Path to the saved model directory (contains config.json).
-    
-    Returns:
-        model: The loaded PyTorch model.
-        tokenizer: The corresponding tokenizer.
     """
-    # Load config to determine model type
     config_path = os.path.join(model_path, "config.json")
     with open(config_path, "r") as f:
         config_dict = json.load(f)
@@ -31,11 +23,9 @@ def load_model_and_tokenizer(model_path):
         else:
             ModelClass = BaselineModel
 
-    # Load model and tokenizer from the same directory
     model = ModelClass.from_pretrained(model_path)
     tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True)
 
-    # Ensure padding token is set
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
