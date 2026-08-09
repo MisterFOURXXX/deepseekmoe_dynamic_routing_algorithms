@@ -1,9 +1,15 @@
 import os
+import sys
+repo_path =  ".."
+os.chdir(repo_path)                 # Move into the repo
+sys.path.insert(0, os.getcwd())     # Ensure the repo root is on sys.path
+
+import os
 import json
 from transformers import AutoTokenizer
-from source.deepseek_baseline.model import DeepseekForCausalLM as BaselineModel
-from source.deepseek_dynamics_routing.model import DeepseekForCausalLM as RoutingModel
-from source.DYNMoE_baseline.model import DynMoEForCausalLM as DynMoEModel
+from deepseekmoe_dynamic_routing_algorithms.source.deepseek_baseline.model import DeepseekForCausalLM as BaselineModel
+from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.model import DeepseekForCausalLM as RoutingModel
+from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.model import DynMoEForCausalLM as DynMoEModel
 
 def load_model_and_tokenizer(model_path):
     """
