@@ -1,13 +1,12 @@
 import os
 import gc
-import json
 import math
 import torch
 import warnings
 from transformers import AutoTokenizer, Trainer, TrainingArguments, DataCollatorForLanguageModeling
 from datasets import load_dataset
 
-# Model imports (assumes repo root is already on sys.path)
+# Model imports (assumes repo root is on sys.path)
 from deepseekmoe_dynamic_routing_algorithms.source.deepseek_baseline.config import DeepseekConfig as BaselineConfig
 from deepseekmoe_dynamic_routing_algorithms.source.deepseek_baseline.model import DeepseekForCausalLM as BaselineModel
 from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.config import DynMoEConfig as DYNMoEBaseConfig
@@ -31,7 +30,7 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-# ---- DeepSpeed configuration (as dict; can be passed directly to TrainingArguments) ----
+# ---- DeepSpeed configuration ----
 ds_config = {
     "train_batch_size": "auto",
     "train_micro_batch_size_per_gpu": "auto",
@@ -56,28 +55,39 @@ ds_config = {
     "zero_allow_untested_optimizer": True
 }
 
-# ---- Lazy dataset loading (cached after first call) ----
+# ---- Lazy dataset loading (cached) ----
 _tokenizer = None
 _tokenized_datasets = None
 _data_collator = None
 
+def _convert_to_strings(seq_list):
+    """Convert list of dicts to list of strings (extract 'text' field if present)."""
+    if not seq_list:
+        return seq_list
+    if isinstance(seq_list[0], dict):
+        if 'text' in seq_list[0]:
+            return [item['text'] for item in seq_list]
+        else:
+            return [str(item) for item in seq_list]
+    return seq_list
+
 def _prepare_data(zip_path, sample_size=300, random_seed=42):
-    """
-    Load and tokenize the MultiWOZ dataset once.
-    Writes train/val/test text files if not already present.
-    Returns (tokenizer, tokenized_datasets, data_collator).
-    """
+    """Load raw data, convert to strings, tokenize, and cache."""
     global _tokenizer, _tokenized_datasets, _data_collator
     if _tokenizer is not None:
         return _tokenizer, _tokenized_datasets, _data_collator
 
-    # Load sequences
     train_sequences, val_sequences, test_sequences = load_and_preprocess_multiwoz(
         zip_path=zip_path,
         sample_size=sample_size,
         random_seed=random_seed
     )
-    # Write to files so they can be loaded by HuggingFace Dataset
+    # Convert to strings if needed
+    train_sequences = _convert_to_strings(train_sequences)
+    val_sequences = _convert_to_strings(val_sequences)
+    test_sequences = _convert_to_strings(test_sequences)
+
+    # Write text files
     with open("train_sequences.txt", "w") as f:
         f.write("\n".join(train_sequences))
     with open("val_sequences.txt", "w") as f:
@@ -90,7 +100,6 @@ def _prepare_data(zip_path, sample_size=300, random_seed=42):
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    # Load and tokenize
     dataset = load_dataset("text", data_files={"train": "train_sequences.txt", "validation": "val_sequences.txt"})
     def tokenize_function(examples):
         return tokenizer(
@@ -113,13 +122,12 @@ def _prepare_data(zip_path, sample_size=300, random_seed=42):
         pad_to_multiple_of=8
     )
 
-    # Cache
     _tokenizer = tokenizer
     _tokenized_datasets = tokenized_datasets
     _data_collator = data_collator
     return tokenizer, tokenized_datasets, data_collator
 
-# ---- Memory cleanup helpers ----
+# ---- Memory cleanup ----
 def clear_gpu_memory():
     if torch.cuda.is_available():
         torch.cuda.synchronize()
@@ -130,24 +138,16 @@ def clear_gpu_memory():
 
 # ---- Core training function ----
 def train_model(ModelClass, ConfigClass, output_dir, is_dynmoe=False,
+                tokenizer=None, tokenized_datasets=None, data_collator=None,
                 zip_path=None, sample_size=300, random_seed=42):
     """
-    Train a model from scratch on MultiWOZ.
-
-    Args:
-        ModelClass: Model class (e.g., BaselineModel)
-        ConfigClass: Config class (e.g., BaselineConfig)
-        output_dir: Directory to save checkpoints and final model.
-        is_dynmoe: Whether this is a DYNMoE variant (to add adaptive callback).
-        zip_path: Path to MultiWOZ2_3.zip (default uses the standard path).
-        sample_size: Number of dialogues to sample.
-        random_seed: Random seed for reproducibility.
+    Train a model. If tokenizer/datasets are provided, use them; otherwise,
+    lazily load and preprocess from raw data.
     """
-    if zip_path is None:
-        zip_path = "/kaggle/working/deepseekmoe_dynamic_routing_algorithms/dataset/MultiWOZ-coref/MultiWOZ2_3.zip"
-
-    # Prepare dataset (lazy)
-    tokenizer, tokenized_datasets, data_collator = _prepare_data(zip_path, sample_size, random_seed)
+    if tokenizer is None or tokenized_datasets is None or data_collator is None:
+        if zip_path is None:
+            zip_path = "/kaggle/working/deepseekmoe_dynamic_routing_algorithms/dataset/MultiWOZ-coref/MultiWOZ2_3.zip"
+        tokenizer, tokenized_datasets, data_collator = _prepare_data(zip_path, sample_size, random_seed)
 
     # Instantiate model
     config = ConfigClass()
@@ -165,7 +165,6 @@ def train_model(ModelClass, ConfigClass, output_dir, is_dynmoe=False,
     print(f" Trainable parameters: {trainable_params:,}")
     print(f" Model architecture:\n{model}\n")
 
-    # Training arguments – pass DeepSpeed config as dict (supported in newer transformers)
     training_args = TrainingArguments(
         output_dir=output_dir,
         num_train_epochs=NUM_EPOCHS,
@@ -185,7 +184,7 @@ def train_model(ModelClass, ConfigClass, output_dir, is_dynmoe=False,
         metric_for_best_model="eval_loss",
         greater_is_better=False,
         report_to="none",
-        deepspeed=ds_config,          # Direct dict, no file needed
+        deepspeed=ds_config,
         ddp_find_unused_parameters=False if world_size > 1 else None,
         gradient_checkpointing=False,
         dataloader_num_workers=2,
@@ -196,7 +195,6 @@ def train_model(ModelClass, ConfigClass, output_dir, is_dynmoe=False,
         save_only_model=True
     )
 
-    # Callbacks
     resource_monitor = ResourceMonitorCallback()
     moemetrics = MoEMetricsCallback(tokenized_datasets["validation"], tokenizer, data_collator)
     callbacks = [resource_monitor, moemetrics]
@@ -232,17 +230,17 @@ def train_model(ModelClass, ConfigClass, output_dir, is_dynmoe=False,
     return trainer
 
 def run_and_cleanup_training(ModelClass, ConfigClass, output_dir, is_dynmoe=False,
+                              tokenizer=None, tokenized_datasets=None, data_collator=None,
                               zip_path=None, sample_size=300, random_seed=42):
     """
-    Run a training experiment and then fully release GPU memory.
+    Run training and free GPU memory.
     """
     print("=" * 60)
-    model_name = ModelClass.__name__
-    print(f"TRAINING {model_name}")
+    print(f"TRAINING {ModelClass.__name__}")
     print("=" * 60)
 
     trainer = train_model(ModelClass, ConfigClass, output_dir, is_dynmoe,
+                          tokenizer, tokenized_datasets, data_collator,
                           zip_path, sample_size, random_seed)
-    # Delete the trainer and its references
     del trainer
     clear_gpu_memory()
