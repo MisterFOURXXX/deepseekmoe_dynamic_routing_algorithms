@@ -8,7 +8,13 @@ import dateparser
 from word2number import w2n
 from sklearn.model_selection import train_test_split
 
-def load_and_preprocess_multiwoz(zip_path="MultiWOZ-coref/MultiWOZ2_3.zip", sample_size=300, random_seed=42):
+zip_path="/kaggle/working/deepseekmoe_dynamic_routing_algorithms/dataset/MultiWOZ-coref/MultiWOZ2_3.zip"
+
+train_sequences_path = "/kaggle/working/deepseekmoe_dynamic_routing_algorithms/dataset/train_sequences.txt"
+fine_sequences_path = "/kaggle/working/deepseekmoe_dynamic_routing_algorithms/dataset/fine_sequences.txt"
+eval_sequences_path = "/kaggle/working/deepseekmoe_dynamic_routing_algorithms/dataset/eval_sequences.txt"
+
+def load_and_preprocess_multiwoz(zip_path=zip_path, random_seed=42):
     destination_dir = "MultiWOZ-coref-extract"
     dataset_dir = os.path.join(destination_dir, "MultiWOZ2_3")
     data_file = os.path.join(dataset_dir, "data.json")
@@ -52,18 +58,18 @@ def load_and_preprocess_multiwoz(zip_path="MultiWOZ-coref/MultiWOZ2_3.zip", samp
             "ontology": ontology
         })
 
-    raw_data = random.sample(raw_data, sample_size)
+    raw_data = random.sample(raw_data, 300)          #####################
 
-    train_val_raw, test_raw = train_test_split(
+    train_fine_raw, eval_raw = train_test_split(
         raw_data,
-        test_size=0.2,
+        test_size=0.3,
         stratify=[d["domain"] for d in raw_data],
         random_state=random_seed
     )
-    train_raw, val_raw = train_test_split(
-        train_val_raw,
-        test_size=0.1875,
-        stratify=[d["domain"] for d in train_val_raw],
+    train_raw, fine_raw = train_test_split(
+        train_fine_raw,
+        test_size=0.6,
+        stratify=[d["domain"] for d in train_fine_raw],
         random_state=random_seed
     )
 
@@ -164,8 +170,8 @@ def load_and_preprocess_multiwoz(zip_path="MultiWOZ-coref/MultiWOZ2_3.zip", samp
         } for item in raw_data_subset]
 
     train_data = process_data(train_raw)
-    val_data = process_data(val_raw)
-    test_data = process_data(test_raw)
+    fine_data = process_data(fine_raw)
+    eval_data = process_data(eval_raw)
 
     def prepare_final_dataset(processed_dialogues):
         sequences = []
@@ -181,16 +187,18 @@ def load_and_preprocess_multiwoz(zip_path="MultiWOZ-coref/MultiWOZ2_3.zip", samp
         return sequences
 
     train_sequences = prepare_final_dataset(train_data)
-    val_sequences = prepare_final_dataset(val_data)
-    test_sequences = prepare_final_dataset(test_data)
+    fine_sequences = prepare_final_dataset(fine_data)
+    eval_sequences = prepare_final_dataset(eval_data)
 
     def save_sequences_to_file(sequences, filename):
         with open(filename, "w", encoding="utf-8") as f:
             for seq in sequences:
                 f.write(seq["text"] + "\n")
 
-    save_sequences_to_file(train_sequences, "train_sequences.txt")
-    save_sequences_to_file(val_sequences, "val_sequences.txt")
-    save_sequences_to_file(test_sequences, "test_sequences.txt")
+    save_sequences_to_file(train_sequences, train_sequences_path)
+    save_sequences_to_file(fine_sequences, fine_sequences_path)
+    save_sequences_to_file(eval_sequences, eval_sequences_path)
 
-    return train_sequences, val_sequences, test_sequences
+    return train_sequences, fine_sequences, eval_sequences
+
+load_and_preprocess_multiwoz()
