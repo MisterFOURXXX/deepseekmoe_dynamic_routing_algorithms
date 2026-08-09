@@ -10,52 +10,68 @@ We address these limitations by integrating DYNMoE's dynamic routing algorithm w
 
 ```text
 deepseekmoe_dynamic_routing_algorithms/
-├── datasets/
+├── dataset/
+│   └── Info.txt                           # Dataset information
 ├── notebooks/
-│   ├── 01_training_comparison.ipynb
-│   ├── 02_fine_tuning_comparison.ipynb
-│   └── 03_evaluation_comparison.ipynb
+│   ├── 01_training_comparison.ipynb      # Pre-training comparison
+│   ├── 02_fine_tuning_comparison.ipynb   # Fine-tuning comparison
+│   └── 03_evaluation_comparison.ipynb    # Evaluation comparison
 ├── source/
-│   ├── __init__.py 
-│   ├── deepseek_baseline/
-│   │   ├── config.py                        # DeepseekConfig (baseline)
-│   │   └── model.py                         # Full model architecture (baseline)
-│   ├── deepseek_dynamics_routing/
-│   │   ├── config.py                        # DeepseekConfig (with max_routed_experts)
-│   │   ├── model.py                         # Full model architecture (DYNMoE)
-│   │   └── adaptive_tuning.py               # AdaptiveExpertTuningCallback
-│   ├── data_preprocessing.py
-│   ├── training_utils/
-│   │   ├── configurations.py
+│   ├── __init__.py
+│   ├── deepseek_baseline/                # Baseline DeepSeekMoE
+│   │   ├── config.py
+│   │   └── model.py
+│   ├── DYNMoE_baseline/                  # DYNMoE baseline
+│   │   ├── adaptive_tuning.py
+│   │   ├── config.py
+│   │   └── model.py
+│   ├── deepseek_dynamics_routing/        # Our integrated prototype
+│   │   ├── adaptive_tuning.py
+│   │   ├── config.py
+│   │   └── model.py
+│   ├── data_preprocessing.py             # MultiWOZ preprocessing
+│   ├── training_utils/                   # Training utilities
+│   │   ├── config.py
 │   │   ├── monitoring.py
-│   │   ├── save_model.py                    # Save model + tokenizer
-│   │   └── summarization.py                 # Training summary table
-│   ├── fine_tuning_utils/
+│   │   ├── save_model.py
+│   │   └── summarization.py
+│   ├── fine_tuning_utils/                # Fine-tuning utilities
+│   │   ├── config.py
 │   │   ├── model_loading.py
-│   │   ├── configurations.py
 │   │   ├── monitoring.py
-│   │   ├── save_model.py                    # Save model + tokenizer
-│   │   └── summarization.py                 # Training summary table
-│   └── evaluation.py
-│       ├── model_loading.py
-│       └── evaluation.py
+│   │   ├── save_model.py
+│   │   └── summarization.py
+│   └── evaluation/
+│       ├── config.py
+│       ├── evaluation.py
+│       └── model_loading.py
 ├── checkpoints/
+├── LICENSE
 ├── README.md
 ├── requirements.txt
 ├── setup.py
-└── setup.sh                  # System dependencies + PyTorch + pip install
+└── setup.sh                              # System dependencies + Python packages
 ```
 
-cd /kaggle/working/deepseekmoe_dynamic_routing_algorithms
+**Quick Start**
 
-**Step 1: Setup system environment and Install Python packages**
-cd /kaggle/working/deepseekmoe_dynamic_routing_algorithms
-!bash setup.sh
+**Step 1: Clone the Repository**
+
+```bash
+git clone https://github.com/yourusername/deepseekmoe_dynamic_routing_algorithms.git
+cd deepseekmoe_dynamic_routing_algorithms
+```
+
+**Step 2: Setup system environment and Install Python packages**
+
+```bash
+bash setup.sh
+```
 
 **Step 2: Restart Python Kernel**
+
 !kill -9 $(pgrep -f ipykernel_launcher)
 
 **Step 3: Execute Training Notebook**
 !jupyter nbconvert --to notebook --execute /kaggle/working/deepseekmoe_dynamic_routing_algorithms/notebook/01_training_comparison.ipynb
 
-evaluation/fine_tuning_utils/training_utils
