@@ -6,7 +6,7 @@ import warnings
 from transformers import AutoTokenizer, Trainer, TrainingArguments, DataCollatorForLanguageModeling
 from datasets import load_dataset
 
-# Imports for models (make sure your repo root is already on sys.path)
+# Model imports (assumes repo root is on sys.path)
 from deepseekmoe_dynamic_routing_algorithms.source.deepseek_baseline.config import DeepseekConfig as BaselineConfig
 from deepseekmoe_dynamic_routing_algorithms.source.deepseek_baseline.model import DeepseekForCausalLM as BaselineModel
 from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.config import DynMoEConfig as DYNMoEBaseConfig
@@ -36,7 +36,7 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-# ---- DeepSpeed config (same as before) ----
+# ---- DeepSpeed config ----
 ds_config = {
     "train_batch_size": "auto",
     "train_micro_batch_size_per_gpu": "auto",
@@ -67,24 +67,41 @@ ds_config = {
     "zero_allow_untested_optimizer": True
 }
 
-# ---- Lazy dataset loading ----
+# ---- Lazy dataset loading with dict-to-string conversion ----
 _tokenizer = None
 _tokenized_datasets = None
 _data_collator = None
 
+def _convert_to_strings(seq_list):
+    """Convert list of dicts to list of strings (extract 'text' field if present)."""
+    if not seq_list:
+        return seq_list
+    if isinstance(seq_list[0], dict):
+        if 'text' in seq_list[0]:
+            return [item['text'] for item in seq_list]
+        else:
+            return [str(item) for item in seq_list]
+    return seq_list
+
 def _prepare_data(zip_path, sample_size=300, random_seed=42):
-    """Load and tokenize the dataset only once."""
+    """Load raw data, convert to strings, tokenize, and cache."""
     global _tokenizer, _tokenized_datasets, _data_collator
     if _tokenizer is not None:
         return _tokenizer, _tokenized_datasets, _data_collator
 
-    # Load sequences
+    # Load sequences (they are dicts)
     train_sequences, val_sequences, test_sequences = load_and_preprocess_multiwoz(
         zip_path=zip_path,
         sample_size=sample_size,
         random_seed=random_seed
     )
-    # Write to files (if not already done elsewhere)
+
+    # Convert to strings
+    train_sequences = _convert_to_strings(train_sequences)
+    val_sequences = _convert_to_strings(val_sequences)
+    test_sequences = _convert_to_strings(test_sequences)
+
+    # Write text files
     with open("train_sequences.txt", "w") as f:
         f.write("\n".join(train_sequences))
     with open("val_sequences.txt", "w") as f:
@@ -120,29 +137,25 @@ def _prepare_data(zip_path, sample_size=300, random_seed=42):
         pad_to_multiple_of=8
     )
 
+    # Cache
     _tokenizer = tokenizer
     _tokenized_datasets = tokenized_datasets
     _data_collator = data_collator
     return tokenizer, tokenized_datasets, data_collator
 
 # ---- Core fine-tuning function ----
-def fine_tune_model(pretrained_path, output_dir, zip_path=None, sample_size=300, random_seed=42):
+def fine_tune_model(pretrained_path, output_dir, zip_path=None, sample_size=300, random_seed=42,
+                    tokenizer=None, tokenized_datasets=None, data_collator=None):
     """
-    Load a model from `pretrained_path` and fine-tune it on MultiWOZ.
-
-    Args:
-        pretrained_path (str): Path to the pre-trained model checkpoint.
-        output_dir (str): Where to save the fine-tuned model.
-        zip_path (str, optional): Path to MultiWOZ2_3.zip. If None, uses the default path.
-        sample_size (int): Number of dialogues to sample (default 300).
-        random_seed (int): Random seed for reproducibility.
+    Fine‑tune a model. If tokenizer/datasets are provided, use them;
+    otherwise, lazily load and preprocess from raw data.
     """
-    # Prepare dataset (lazy)
-    if zip_path is None:
-        zip_path = "/kaggle/working/deepseekmoe_dynamic_routing_algorithms/dataset/MultiWOZ-coref/MultiWOZ2_3.zip"
-    tokenizer, tokenized_datasets, data_collator = _prepare_data(zip_path, sample_size, random_seed)
+    if tokenizer is None or tokenized_datasets is None or data_collator is None:
+        if zip_path is None:
+            zip_path = "/kaggle/working/deepseekmoe_dynamic_routing_algorithms/dataset/MultiWOZ-coref/MultiWOZ2_3.zip"
+        tokenizer, tokenized_datasets, data_collator = _prepare_data(zip_path, sample_size, random_seed)
 
-    # Load model
+    # Load the pre‑trained model
     model, tokenizer = load_model_and_tokenizer(pretrained_path)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -150,7 +163,6 @@ def fine_tune_model(pretrained_path, output_dir, zip_path=None, sample_size=300,
     model.config.use_cache = False
     model.train()
 
-    # Determine if DYNMoE variant
     is_dynmoe = "DynMoE" in model.__class__.__name__
 
     total_params = sum(p.numel() for p in model.parameters())
@@ -159,7 +171,6 @@ def fine_tune_model(pretrained_path, output_dir, zip_path=None, sample_size=300,
     print(f" Total parameters: {total_params:,}")
     print(f" Trainable parameters: {trainable_params:,}")
 
-    # Training arguments
     training_args = TrainingArguments(
         output_dir=output_dir,
         num_train_epochs=NUM_EPOCHS_FT,
@@ -191,13 +202,8 @@ def fine_tune_model(pretrained_path, output_dir, zip_path=None, sample_size=300,
         save_only_model=True
     )
 
-    # Callbacks
     resource_monitor = ResourceMonitorCallback()
-    moemetrics = MoEMetricsCallback(
-        tokenized_datasets["validation"],
-        tokenizer,
-        data_collator
-    )
+    moemetrics = MoEMetricsCallback(tokenized_datasets["validation"], tokenizer, data_collator)
     callbacks = [resource_monitor, moemetrics]
 
     if is_dynmoe:
@@ -227,7 +233,6 @@ def fine_tune_model(pretrained_path, output_dir, zip_path=None, sample_size=300,
     print(f"Final validation loss: {final_loss:.4f}")
     print(f"Validation Perplexity: {perplexity:.2f}")
 
-    # Save final model
     final_output_dir = os.path.join(output_dir, "final")
     unwrapped = trainer.model.module if hasattr(trainer.model, 'module') else trainer.model
     unwrapped.save_pretrained(final_output_dir)
@@ -239,7 +244,7 @@ def fine_tune_model(pretrained_path, output_dir, zip_path=None, sample_size=300,
 
     return trainer
 
-# ---- Memory cleanup helpers ----
+# ---- Memory cleanup ----
 def clear_gpu_memory():
     if torch.cuda.is_available():
         torch.cuda.synchronize()
@@ -255,13 +260,15 @@ def cleanup_trainer(trainer):
         del trainer
     clear_gpu_memory()
 
-def run_and_cleanup_experiment(pretrained_path, output_dir, zip_path=None, sample_size=300, random_seed=42):
+def run_and_cleanup_experiment(pretrained_path, output_dir, zip_path=None, sample_size=300, random_seed=42,
+                                tokenizer=None, tokenized_datasets=None, data_collator=None):
     """
-    Run a fine‑tuning experiment and then clean up GPU memory completely.
+    Run a fine‑tuning experiment and then clean up GPU memory.
     """
     print("=" * 60)
     print(f"FINE-TUNING from {pretrained_path}")
     print("=" * 60)
 
-    trainer = fine_tune_model(pretrained_path, output_dir, zip_path, sample_size, random_seed)
+    trainer = fine_tune_model(pretrained_path, output_dir, zip_path, sample_size, random_seed,
+                              tokenizer, tokenized_datasets, data_collator)
     cleanup_trainer(trainer)
