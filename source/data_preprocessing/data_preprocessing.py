@@ -7,12 +7,12 @@ import contractions
 import dateparser
 from word2number import w2n
 from sklearn.model_selection import train_test_split
-
-# Default paths (adjust as needed)
-DEFAULT_ZIP_PATH = "/kaggle/working/deepseekmoe_dynamic_routing_algorithms/dataset/MultiWOZ-coref/MultiWOZ2_3.zip"
-DEFAULT_TRAIN_PATH = "/kaggle/working/deepseekmoe_dynamic_routing_algorithms/dataset/train_sequences.txt"
-DEFAULT_FINE_PATH = "/kaggle/working/deepseekmoe_dynamic_routing_algorithms/dataset/fine_sequences.txt"
-DEFAULT_EVAL_PATH = "/kaggle/working/deepseekmoe_dynamic_routing_algorithms/dataset/eval_sequences.txt"
+from deepseekmoe_dynamic_routing_algorithms.source.config import (
+    DEFAULT_ZIP_PATH,
+    DEFAULT_TRAIN_PATH,
+    DEFAULT_FINE_PATH,
+    DEFAULT_EVAL_PATH
+)
 
 def load_and_preprocess_multiwoz(
     zip_path=DEFAULT_ZIP_PATH,
@@ -29,6 +29,7 @@ def load_and_preprocess_multiwoz(
     Load MultiWOZ 2.3, extract dialogue pairs, and split into three sets.
     Returns three lists of sequences (each sequence is a dict with 'text').
     """
+
     # ---- Extract and load raw data ----
     destination_dir = "MultiWOZ-coref-extract"
     dataset_dir = os.path.join(destination_dir, "MultiWOZ2_3")
@@ -228,4 +229,6 @@ def load_and_preprocess_multiwoz(
 
     return train_sequences, fine_sequences, eval_sequences
 
+print("Starting Data Preprocessing....")
 load_and_preprocess_multiwoz()
+print("Data Preprocessing Complete!")

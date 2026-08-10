@@ -24,3 +24,7 @@ BIAS_UPDATE_RATE = 0.001           # moderate bias update to balance load
 ADAPTIVE_AUDIT_STEPS = 100           # paper suggests 100–300
 MAX_ROUTED_EXPERTS = 6
 DYNMOE_THRESHOLD_INIT = -0.02
+
+OUTPUT_BASELINE = "/kaggle/working/deepseekmoe_dynamic_routing_algorithms/checkpoints/baseline"
+OUTPUT_DYNMOE_BASE = "/kaggle/working/deepseekmoe_dynamic_routing_algorithms/checkpoints/dynmoe_baseline"
+OUTPUT_DEEPSEEK_DYNMOE = "/kaggle/working/deepseekmoe_dynamic_routing_algorithms/checkpoints/dynmoe_routing"
