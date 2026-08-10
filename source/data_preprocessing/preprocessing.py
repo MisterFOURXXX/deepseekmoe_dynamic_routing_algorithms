@@ -1,9 +1,5 @@
 import os
 import sys
-repo_path =  ".."
-os.chdir(repo_path)                 # Move into the repo
-sys.path.insert(0, os.getcwd())     # Ensure the repo root is on sys.path
-
 import re
 import json
 import random
@@ -12,10 +8,12 @@ import contractions
 import dateparser
 from word2number import w2n
 from sklearn.model_selection import train_test_split
-from deepseekmoe_dynamic_routing_algorithms.source.data_preprocessing.config import (DEFAULT_ZIP_PATH, 
-                                                                                     DEFAULT_TRAIN_PATH, 
-                                                                                     DEFAULT_FINE_PATH, 
-                                                                                     DEFAULT_EVAL_PATH) 
+from deepseekmoe_dynamic_routing_algorithms.source.data_preprocessing.config import (
+    DEFAULT_EVAL_PATH,
+    DEFAULT_FINE_PATH,
+    DEFAULT_TRAIN_PATH,
+    DEFAULT_ZIP_PATH,
+)
 
 def load_and_preprocess_multiwoz(
     zip_path=DEFAULT_ZIP_PATH,
