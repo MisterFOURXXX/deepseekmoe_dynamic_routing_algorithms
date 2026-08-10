@@ -234,6 +234,7 @@ def load_and_preprocess_multiwoz(
 
     return train_sequences, fine_sequences, eval_sequences
 
-print("Starting Data Preprocessing....")
-load_and_preprocess_multiwoz()
-print("Data Preprocessing Complete!")
+if __name__ == "__main__":
+    print("Starting Data Preprocessing....")
+    load_and_preprocess_multiwoz()
+    print("Data Preprocessing Complete!")
