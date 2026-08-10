@@ -10,7 +10,17 @@ import contractions
 import dateparser
 from word2number import w2n
 from sklearn.model_selection import train_test_split
-from deepseekmoe_dynamic_routing_algorithms.source.data_preprocessing.config import (
+#from deepseekmoe_dynamic_routing_algorithms.source.data_preprocessing.config import (
+#    DEFAULT_EVAL_PATH,
+#    DEFAULT_FINE_PATH,
+#    DEFAULT_TRAIN_PATH,
+#    DEFAULT_ZIP_PATH,
+#)
+# Change this:
+# from deepseekmoe_dynamic_routing_algorithms.source.data_preprocessing.config import (...)
+
+# To this:
+from source.data_preprocessing.config import (
     DEFAULT_EVAL_PATH,
     DEFAULT_FINE_PATH,
     DEFAULT_TRAIN_PATH,
