@@ -10,6 +10,8 @@ REPO_ROOT="/kaggle/working/deepseekmoe_dynamic_routing_algorithms"
 #Navigating to Repository Root
 cd "$REPO_ROOT"
 
+cd /kaggle/working/deepseekmoe_dynamic_routing_algorithms
+
 # System dependencies
 sed -i 's/archive.ubuntu.com/mirrors.kernel.org/g' /etc/apt/sources.list
 apt-get update -qq && apt-get install -y libaio-dev -qq
