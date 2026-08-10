@@ -44,8 +44,8 @@ def run_evaluate(label, model_path, EVAL_FILE_PATH):
     model = model.to(device)
     model.eval()
 
-    # Run evaluation on the fixed eval file
-    results = evaluate_model_func(
+    # Run evaluation
+    evaluate_model_func(
         model=model,
         tokenizer=tokenizer,
         test_file=EVAL_FILE_PATH,     
@@ -57,5 +57,3 @@ def run_evaluate(label, model_path, EVAL_FILE_PATH):
     del model
     del tokenizer
     clear_gpu_memory()
-
-    return results
