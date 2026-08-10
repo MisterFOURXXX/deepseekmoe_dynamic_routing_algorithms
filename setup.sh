@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# Automatically resolve the directory containing setup.sh and setup.py
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd "$SCRIPT_DIR"
+
 # Set repository root variable
 REPO_ROOT="/kaggle/working/deepseekmoe_dynamic_routing_algorithms"
 
@@ -17,7 +21,8 @@ pip install torch==2.9.0 torchvision==0.24.0 torchaudio==2.9.0 --index-url https
 pip install -r requirements.txt
 
 # Registering Package (pip install -e .)/ Linking Repository Paths (pip install -e .)
-pip install -e .
+# pip install -e .
+!pip install -e /kaggle/working/deepseekmoe_dynamic_routing_algorithms
 
 echo "Environment setup complete!"
 
