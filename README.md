@@ -59,19 +59,38 @@ deepseekmoe_dynamic_routing_algorithms/
 
 ```bash
 git clone https://github.com/yourusername/deepseekmoe_dynamic_routing_algorithms.git
-cd deepseekmoe_dynamic_routing_algorithms
 ```
 
 **Step 2: Setup system environment and Install Python packages**
 
 ```bash
+cd /kaggle/working/deepseekmoe_dynamic_routing_algorithms
 bash setup.sh
 ```
 
-**Step 2: Restart Python Kernel**
+**Step 3: Restart Python Kernel**
 
-!kill -9 $(pgrep -f ipykernel_launcher)
+```bash
+exit 0
+```
 
-**Step 3: Execute Training Notebook**
-!jupyter nbconvert --to notebook --execute /kaggle/working/deepseekmoe_dynamic_routing_algorithms/notebook/01_training_comparison.ipynb
+**Step 4: Execute Data Preprocessing**
+
+**Step 4.1:**
+
+Revise path for data preprocessing and save to dataset
+
+DEFAULT_ZIP_PATH = "/kaggle/working/deepseekmoe_dynamic_routing_algorithms/dataset/MultiWOZ-coref/MultiWOZ2_3.zip"
+DEFAULT_TRAIN_PATH = "/kaggle/working/deepseekmoe_dynamic_routing_algorithms/dataset/train_sequences.txt"
+DEFAULT_FINE_PATH = "/kaggle/working/deepseekmoe_dynamic_routing_algorithms/dataset/fine_sequences.txt"
+DEFAULT_EVAL_PATH = "/kaggle/working/deepseekmoe_dynamic_routing_algorithms/dataset/eval_sequences.txt"
+
+**Step 4.2:**
+
+```bash
+cd /kaggle/working/deepseekmoe_dynamic_routing_algorithms/source
+python3 data_preprocessing.py
+```
+
+
 

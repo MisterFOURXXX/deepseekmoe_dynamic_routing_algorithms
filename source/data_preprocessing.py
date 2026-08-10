@@ -8,13 +8,28 @@ import dateparser
 from word2number import w2n
 from sklearn.model_selection import train_test_split
 
-zip_path="/kaggle/working/deepseekmoe_dynamic_routing_algorithms/dataset/MultiWOZ-coref/MultiWOZ2_3.zip"
+# Default paths (adjust as needed)
+DEFAULT_ZIP_PATH = "/kaggle/working/deepseekmoe_dynamic_routing_algorithms/dataset/MultiWOZ-coref/MultiWOZ2_3.zip"
+DEFAULT_TRAIN_PATH = "/kaggle/working/deepseekmoe_dynamic_routing_algorithms/dataset/train_sequences.txt"
+DEFAULT_FINE_PATH = "/kaggle/working/deepseekmoe_dynamic_routing_algorithms/dataset/fine_sequences.txt"
+DEFAULT_EVAL_PATH = "/kaggle/working/deepseekmoe_dynamic_routing_algorithms/dataset/eval_sequences.txt"
 
-train_sequences_path = "/kaggle/working/deepseekmoe_dynamic_routing_algorithms/dataset/train_sequences.txt"
-fine_sequences_path = "/kaggle/working/deepseekmoe_dynamic_routing_algorithms/dataset/fine_sequences.txt"
-eval_sequences_path = "/kaggle/working/deepseekmoe_dynamic_routing_algorithms/dataset/eval_sequences.txt"
-
-def load_and_preprocess_multiwoz(zip_path=zip_path, random_seed=42):
+def load_and_preprocess_multiwoz(
+    zip_path=DEFAULT_ZIP_PATH,
+    sample_size=500, # None
+    train_ratio=0.5,
+    fine_ratio=0.3,
+    eval_ratio=0.2,
+    random_seed=42,
+    train_output_path=DEFAULT_TRAIN_PATH,
+    fine_output_path=DEFAULT_FINE_PATH,
+    eval_output_path=DEFAULT_EVAL_PATH
+):
+    """
+    Load MultiWOZ 2.3, extract dialogue pairs, and split into three sets.
+    Returns three lists of sequences (each sequence is a dict with 'text').
+    """
+    # ---- Extract and load raw data ----
     destination_dir = "MultiWOZ-coref-extract"
     dataset_dir = os.path.join(destination_dir, "MultiWOZ2_3")
     data_file = os.path.join(dataset_dir, "data.json")
@@ -33,6 +48,7 @@ def load_and_preprocess_multiwoz(zip_path=zip_path, random_seed=42):
     with open(dialogue_acts_file, 'r') as f:
         dialogue_acts = json.load(f)
 
+    # ---- Helper functions ----
     def get_primary_domain(dialogue):
         for key in ("new_goal", "goal"):
             domains = [d for d in dialogue.get(key, {}) if d != "user_action" and isinstance(dialogue[key].get(d), dict)]
@@ -48,6 +64,7 @@ def load_and_preprocess_multiwoz(zip_path=zip_path, random_seed=42):
     def normalize_dialogue_id(dialogue_id):
         return dialogue_id[:-len('.json')] if dialogue_id.endswith('.json') else dialogue_id
 
+    # ---- Build raw list ----
     raw_data = []
     for dialogue_id, dialogue in data.items():
         raw_data.append({
@@ -58,21 +75,31 @@ def load_and_preprocess_multiwoz(zip_path=zip_path, random_seed=42):
             "ontology": ontology
         })
 
-    raw_data = random.sample(raw_data, 300)          #####################
+    # ---- Sample if requested ----
+    if sample_size is not None and sample_size < len(raw_data):
+        raw_data = random.sample(raw_data, sample_size)
 
+    # ---- Split into three parts (stratified by domain) ----
+    # First split: train_fine (train+fine) vs eval
     train_fine_raw, eval_raw = train_test_split(
         raw_data,
-        test_size=0.3,
+        test_size=eval_ratio,
         stratify=[d["domain"] for d in raw_data],
         random_state=random_seed
     )
+    # Second split: train vs fine (within train_fine)
+    # The proportion of fine within train_fine should be fine_ratio / (train_ratio + fine_ratio)
+    fine_proportion_within_train_fine = fine_ratio / (train_ratio + fine_ratio)
     train_raw, fine_raw = train_test_split(
         train_fine_raw,
-        test_size=0.6,
+        test_size=fine_proportion_within_train_fine,
         stratify=[d["domain"] for d in train_fine_raw],
         random_state=random_seed
     )
 
+    print(f"Split sizes: Train={len(train_raw)}, Fine={len(fine_raw)}, Eval={len(eval_raw)}")
+
+    # ---- Normalization functions (same as prototype) ----
     def normalize_general_text(text):
         text = contractions.fix(text, slang=False)
         text = re.sub(r'\s+', ' ', text).strip()
@@ -108,9 +135,7 @@ def load_and_preprocess_multiwoz(zip_path=zip_path, random_seed=42):
     COMPLEX_NUMBER_WORDS_PATTERN = rf"\b((?:{NUMBER_WORDS_FOR_REGEX})(?:\s+(?:and\s+)?(?:{NUMBER_WORDS_FOR_REGEX}))*)\b"
 
     def normalize_currency_in_text(text):
-        # Validate that the matched string consists only of allowed number words
         def is_valid_number_word_sequence(s):
-            # simple check: split and verify each word is in the number words set
             words = s.lower().split()
             number_words_set = set(NUMBER_WORDS_FOR_REGEX.split('|'))
             return all(w in number_words_set for w in words)
@@ -118,7 +143,6 @@ def load_and_preprocess_multiwoz(zip_path=zip_path, random_seed=42):
         def word_num_keyword_replacer(match):
             num_word_str = match.group(1)
             currency_key_str = match.group(2).lower()
-            # Only convert if the number word sequence is valid
             if is_valid_number_word_sequence(num_word_str):
                 try:
                     num_val = w2n.word_to_num(num_word_str)
@@ -126,10 +150,8 @@ def load_and_preprocess_multiwoz(zip_path=zip_path, random_seed=42):
                     return f"{num_val} {currency_code}"
                 except ValueError:
                     pass
-            # fallback: leave unchanged
             return match.group(0)
 
-        # rest of the function unchanged except the fallback
         currency_keywords_regex = "|".join([re.escape(k) for k in ALL_CURRENCY_KEYWORDS_SORTED])
         pattern = rf"({COMPLEX_NUMBER_WORDS_PATTERN})\s+({currency_keywords_regex})\b"
         text = re.sub(pattern, word_num_keyword_replacer, text, flags=re.IGNORECASE)
@@ -146,6 +168,7 @@ def load_and_preprocess_multiwoz(zip_path=zip_path, random_seed=42):
         text = re.sub(r'\s+', ' ', text).strip()
         return text
 
+    # ---- Process dialogues ----
     def process_dialogue_turns(dialogue_data):
         turns = dialogue_data.get("log", [])
         processed_turns = []
@@ -173,6 +196,7 @@ def load_and_preprocess_multiwoz(zip_path=zip_path, random_seed=42):
     fine_data = process_data(fine_raw)
     eval_data = process_data(eval_raw)
 
+    # ---- Create User/System pairs ----
     def prepare_final_dataset(processed_dialogues):
         sequences = []
         for dialogue_item in processed_dialogues:
@@ -190,14 +214,17 @@ def load_and_preprocess_multiwoz(zip_path=zip_path, random_seed=42):
     fine_sequences = prepare_final_dataset(fine_data)
     eval_sequences = prepare_final_dataset(eval_data)
 
+    # ---- Save to files ----
     def save_sequences_to_file(sequences, filename):
         with open(filename, "w", encoding="utf-8") as f:
             for seq in sequences:
                 f.write(seq["text"] + "\n")
 
-    save_sequences_to_file(train_sequences, train_sequences_path)
-    save_sequences_to_file(fine_sequences, fine_sequences_path)
-    save_sequences_to_file(eval_sequences, eval_sequences_path)
+    save_sequences_to_file(train_sequences, train_output_path)
+    save_sequences_to_file(fine_sequences, fine_output_path)
+    save_sequences_to_file(eval_sequences, eval_output_path)
+
+    print(f"Saved: {len(train_sequences)} train, {len(fine_sequences)} fine, {len(eval_sequences)} eval")
 
     return train_sequences, fine_sequences, eval_sequences
 

@@ -1,4 +1,5 @@
 import gc
+import torch
 
 def clear_cached_data():
     """Clear the global cached dataset to free memory."""

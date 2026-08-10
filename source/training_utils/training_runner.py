@@ -1,30 +1,37 @@
 import os
-import gc
 import math
 import torch
 import warnings
+import random
 from transformers import AutoTokenizer, Trainer, TrainingArguments, DataCollatorForLanguageModeling
 from datasets import load_dataset
 
 # Model imports (assumes repo root is on sys.path)
 from deepseekmoe_dynamic_routing_algorithms.source.deepseek_baseline.config import DeepseekConfig as BaselineConfig
 from deepseekmoe_dynamic_routing_algorithms.source.deepseek_baseline.model import DeepseekForCausalLM as BaselineModel
+
 from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.config import DynMoEConfig as DYNMoEBaseConfig
 from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.model import DynMoEForCausalLM as DYNMoEBaseModel
 from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.adaptive_tuning import AdaptiveExpertTuningCallback as DYNMoEBaseCallback
+from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.adaptive_tuning import ADAPTIVE_AUDIT_STEPS as DYNMoE_BASE_ADAPTIVE_AUDIT_STEPS
+
 from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.config import DeepseekConfig as DynmoeConfig
 from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.model import DeepseekForCausalLM as DynmoeModel
 from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.adaptive_tuning import AdaptiveExpertTuningCallback as DynmoeRoutingCallback
+from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.adaptive_tuning import ADAPTIVE_AUDIT_STEPS as DYNMOE_ROUTING_ADAPTIVE_AUDIT_STEPS
 
 from deepseekmoe_dynamic_routing_algorithms.source.training_utils.monitoring import ResourceMonitorCallback, MoEMetricsCallback
 from deepseekmoe_dynamic_routing_algorithms.source.training_utils.save_model import save_model_and_tokenizer
 from deepseekmoe_dynamic_routing_algorithms.source.training_utils.summarization import print_training_summary
-from deepseekmoe_dynamic_routing_algorithms.source.data_preprocessing import load_and_preprocess_multiwoz
+
 from deepseekmoe_dynamic_routing_algorithms.source.training_utils.config import (
     MAX_SEQ_LEN, PER_DEVICE_BATCH, GRAD_ACCUM, LEARNING_RATE,
     NUM_EPOCHS, WARMUP_STEPS, WEIGHT_DECAY,
     EARLY_STOPPING_PATIENCE, EARLY_STOPPING_THRESHOLD, world_size
 )
+
+## Import memory utilities
+from deepseekmoe_dynamic_routing_algorithms.source.memory_utils import cleanup_trainer, clear_cached_data
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -55,100 +62,108 @@ ds_config = {
     "zero_allow_untested_optimizer": True
 }
 
-# ---- Lazy dataset loading (cached) ----
+# Lazy dataset loading (cached)
 _tokenizer = None
 _tokenized_datasets = None
 _data_collator = None
 
-def _convert_to_strings(seq_list):
-    """Convert list of dicts to list of strings (extract 'text' field if present)."""
-    if not seq_list:
-        return seq_list
-    if isinstance(seq_list[0], dict):
-        if 'text' in seq_list[0]:
-            return [item['text'] for item in seq_list]
+def _prepare_data(
+    data_file_path: str,
+    model_class=None,
+    tokenizer_name: str = None,
+    split_ratio: float = 0.8,
+    random_seed: int = 42,
+    max_seq_len: int = MAX_SEQ_LEN   # defined elsewhere
+):
+    """
+    Load a preprocessed train_sequences.txt, split into train/val,
+    and tokenize using the appropriate tokenizer for the model.
+    
+    Args:
+        data_file_path: Path to the preprocessed text file (one sequence per line).
+        model_class: The model class (e.g., BaselineModel, DynmoeModel, DYNMoEBaseModel).
+        tokenizer_name: Explicit tokenizer name (overrides automatic selection).
+        split_ratio: Fraction of data to use for training (rest for validation).
+        random_seed: Seed for shuffling.
+        max_seq_len: Maximum sequence length for tokenization.
+    
+    Returns:
+        tokenizer, tokenized_datasets, data_collator
+    """
+    # 1. Choose tokenizer based on model class or explicit name
+    if tokenizer_name is None:
+        if model_class is not None and model_class.__name__ == "DYNMoEBaseModel":
+            # Use the tokenizer specified in the DYNMoE research paper.
+            tokenizer_name = "microsoft/phi-2" 
         else:
-            return [str(item) for item in seq_list]
-    return seq_list
+            # BaselineModel and DynmoeModel use the DeepSeek tokenizer.
+            tokenizer_name = "deepseek-ai/deepseek-moe-16b-base"
 
-def _prepare_data(zip_path, sample_size=300, random_seed=42):
-    """Load raw data, convert to strings, tokenize, and cache."""
-    global _tokenizer, _tokenized_datasets, _data_collator
-    if _tokenizer is not None:
-        return _tokenizer, _tokenized_datasets, _data_collator
-
-    train_sequences, val_sequences, test_sequences = load_and_preprocess_multiwoz(
-        zip_path=zip_path,
-        sample_size=sample_size,
-        random_seed=random_seed
-    )
-    # Convert to strings if needed
-    train_sequences = _convert_to_strings(train_sequences)
-    val_sequences = _convert_to_strings(val_sequences)
-    test_sequences = _convert_to_strings(test_sequences)
-
-    # Write text files
-    with open("train_sequences.txt", "w") as f:
-        f.write("\n".join(train_sequences))
-    with open("val_sequences.txt", "w") as f:
-        f.write("\n".join(val_sequences))
-    with open("test_sequences.txt", "w") as f:
-        f.write("\n".join(test_sequences))
-
-    # Tokenizer
-    tokenizer = AutoTokenizer.from_pretrained("deepseek-ai/deepseek-moe-16b-base", use_fast=True)
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, use_fast=True)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    dataset = load_dataset("text", data_files={"train": "train_sequences.txt", "validation": "val_sequences.txt"})
+    # 2. Load the preprocessed data
+    with open(data_file_path, "r", encoding="utf-8") as f:
+        lines = [line.strip() for line in f if line.strip()]
+
+    if not lines:
+        raise ValueError(f"No data found in {data_file_path}")
+
+    # 3. Shuffle and split
+    rng = random.Random(random_seed)
+    rng.shuffle(lines)
+    split_idx = int(len(lines) * split_ratio)
+    train_lines = lines[:split_idx]
+    val_lines = lines[split_idx:]
+
+    # 4. Build DatasetDict
+    from datasets import Dataset, DatasetDict
+    train_dataset = Dataset.from_dict({"text": train_lines})
+    val_dataset = Dataset.from_dict({"text": val_lines})
+    dataset_dict = DatasetDict({"train": train_dataset, "validation": val_dataset})
+
+    # 5. Tokenize
     def tokenize_function(examples):
         return tokenizer(
             examples["text"],
             truncation=True,
-            max_length=MAX_SEQ_LEN,
+            max_length=max_seq_len,
             padding=False,
             return_attention_mask=True,
         )
-    tokenized_datasets = dataset.map(
+
+    tokenized_datasets = dataset_dict.map(
         tokenize_function,
         batched=True,
         remove_columns=["text"],
         num_proc=2,
         desc="Tokenizing datasets"
     )
+
+    # 6. Data collator for language modelling
     data_collator = DataCollatorForLanguageModeling(
         tokenizer=tokenizer,
         mlm=False,
         pad_to_multiple_of=8
     )
 
-    _tokenizer = tokenizer
-    _tokenized_datasets = tokenized_datasets
-    _data_collator = data_collator
     return tokenizer, tokenized_datasets, data_collator
-
-# ---- Memory cleanup ----
-def clear_gpu_memory():
-    if torch.cuda.is_available():
-        torch.cuda.synchronize()
-    gc.collect()
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-        torch.cuda.reset_peak_memory_stats()
 
 # ---- Core training function ----
 def train_model(ModelClass, ConfigClass, output_dir, is_dynmoe=False,
                 tokenizer=None, tokenized_datasets=None, data_collator=None,
-                zip_path=None, sample_size=300, random_seed=42):
+                data_file_path=None, split_ratio=0.9, random_seed=42):
     """
     Train a model. If tokenizer/datasets are provided, use them; otherwise,
-    lazily load and preprocess from raw data.
+    load and tokenize from the preprocessed text file.
     """
-    if tokenizer is None or tokenized_datasets is None or data_collator is None:
-        if zip_path is None:
-            zip_path = "/kaggle/working/deepseekmoe_dynamic_routing_algorithms/dataset/MultiWOZ-coref/MultiWOZ2_3.zip"
-        tokenizer, tokenized_datasets, data_collator = _prepare_data(zip_path, sample_size, random_seed)
-
+    tokenizer, tokenized_datasets, data_collator = _prepare_data(
+            data_file_path=data_file_path,
+            model_class=ModelClass,
+            split_ratio=split_ratio,
+            random_seed=random_seed
+        )
     # Instantiate model
     config = ConfigClass()
     model = ModelClass(config)
@@ -201,9 +216,9 @@ def train_model(ModelClass, ConfigClass, output_dir, is_dynmoe=False,
 
     if is_dynmoe:
         if "DYNMoE_baseline" in str(ModelClass):
-            adaptive_callback = DYNMoEBaseCallback(audit_steps=10)
+            adaptive_callback = DYNMoEBaseCallback(audit_steps=DYNMoE_BASE_ADAPTIVE_AUDIT_STEPS)
         else:
-            adaptive_callback = DynmoeRoutingCallback(audit_steps=50)
+            adaptive_callback = DynmoeRoutingCallback(audit_steps=DYNMOE_ROUTING_ADAPTIVE_AUDIT_STEPS)
         callbacks.append(adaptive_callback)
 
     trainer = Trainer(
@@ -229,11 +244,12 @@ def train_model(ModelClass, ConfigClass, output_dir, is_dynmoe=False,
 
     return trainer
 
-def run_and_cleanup_training(ModelClass, ConfigClass, output_dir, is_dynmoe=False,
-                              tokenizer=None, tokenized_datasets=None, data_collator=None,
-                              zip_path=None, sample_size=300, random_seed=42):
+def run_training(ModelClass, ConfigClass, output_dir, is_dynmoe=False,
+                 tokenizer=None, tokenized_datasets=None, data_collator=None,
+                 data_file_path=None, split_ratio=0.9, random_seed=42):
     """
-    Run training and free GPU memory.
+    Run training and then fully clean up GPU/CPU memory and the dataset cache.
+    Returns nothing; the trainer is deleted internally.
     """
     print("=" * 60)
     print(f"TRAINING {ModelClass.__name__}")
@@ -241,6 +257,10 @@ def run_and_cleanup_training(ModelClass, ConfigClass, output_dir, is_dynmoe=Fals
 
     trainer = train_model(ModelClass, ConfigClass, output_dir, is_dynmoe,
                           tokenizer, tokenized_datasets, data_collator,
-                          zip_path, sample_size, random_seed)
-    del trainer
-    clear_gpu_memory()
+                          data_file_path=data_file_path,
+                          split_ratio=split_ratio,
+                          random_seed=random_seed)
+
+    # ---- Cleanup ----
+    cleanup_trainer(trainer)
+    clear_cached_data()
