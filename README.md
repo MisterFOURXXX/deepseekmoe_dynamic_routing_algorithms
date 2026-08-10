@@ -89,7 +89,7 @@ DEFAULT_EVAL_PATH = "/kaggle/working/deepseekmoe_dynamic_routing_algorithms/data
 
 ```bash
 cd /kaggle/working/deepseekmoe_dynamic_routing_algorithms/source/data_preprocessing
-python3 data_preprocessing.py
+python3 preprocessing.py
 ```
 
 Changed data path, model training, fine tuning, and evaluation at configs of each folder source
