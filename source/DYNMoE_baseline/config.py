@@ -1,9 +1,9 @@
 # config.py
 import os
 import sys
-repo_path =  ".."
-os.chdir(repo_path)
-sys.path.insert(0, os.getcwd())
+#repo_path =  ".."
+#os.chdir(repo_path)
+#sys.path.insert(0, os.getcwd())
 
 import math
 from transformers.utils import logging

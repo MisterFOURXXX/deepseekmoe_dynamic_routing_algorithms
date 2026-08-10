@@ -1,5 +1,5 @@
 import sys
-sys.path.append('..')
+#sys.path.append('..')
 
 import os
 import gc
@@ -53,7 +53,7 @@ def run_evaluate(label, model_path, EVAL_FILE_PATH):
         **EVAL_PARAMS
     )
 
-    # ---- Cleanup ----
+    # Cleanup 
     del model
     del tokenizer
     clear_gpu_memory()

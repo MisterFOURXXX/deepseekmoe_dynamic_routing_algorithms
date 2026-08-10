@@ -1,8 +1,8 @@
 import os
 import sys
-repo_path =  ".."
-os.chdir(repo_path)                 # Move into the repo
-sys.path.insert(0, os.getcwd())     # Ensure the repo root is on sys.path
+#repo_path =  ".."
+#os.chdir(repo_path)                 # Move into the repo
+#sys.path.insert(0, os.getcwd())     # Ensure the repo root is on sys.path
 
 from transformers.utils import logging
 from transformers.configuration_utils import PretrainedConfig
