@@ -1,7 +1,7 @@
 import sys
 import os
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
-sys.path.insert(0, project_root)   # <-- insert the project root
+#project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
+#sys.path.insert(0, project_root)   # <-- insert the project root
 
 # Default paths – these are absolute and unchanged
 DEFAULT_ZIP_PATH = "/kaggle/working/deepseekmoe_dynamic_routing_algorithms/dataset/MultiWOZ-coref/MultiWOZ2_3.zip"
