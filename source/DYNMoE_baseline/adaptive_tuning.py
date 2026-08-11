@@ -10,6 +10,10 @@ from transformers import TrainerCallback
 ADAPTIVE_AUDIT_STEPS = 100
 
 class AdaptiveExpertTuningCallback(TrainerCallback):
+    """
+    This callback must be added to the Hugging Face Trainer to automatically
+    trigger adaptive expert addition/removal every `audit_steps` training steps.
+    """
     def __init__(self, audit_steps: int = ADAPTIVE_AUDIT_STEPS):
         self.audit_steps = audit_steps
         self.global_step = 0

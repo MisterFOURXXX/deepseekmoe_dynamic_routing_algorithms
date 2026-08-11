@@ -82,31 +82,56 @@ from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.config import
     ADAPTIVE_AUDIT_STEPS,
     MAX_ROUTED_EXPERTS,
     DYNMOE_THRESHOLD_INIT,
+    INITIAL_EXPERTS
 )
 
-# ====================== RMS NORM ======================
+# ====================== RMS NORM (Phi‑2 uses RMSNorm) ======================
 class DynMoERMSNorm(nn.Module):
     def __init__(self, hidden_size, eps=1e-5):
-        
         super().__init__()
         self.weight = nn.Parameter(torch.ones(hidden_size))
         self.variance_epsilon = eps
 
     def forward(self, hidden_states):
         input_dtype = hidden_states.dtype
-        weight_dtype = self.weight.dtype
-        hidden_states = hidden_states.to(dtype=weight_dtype)
+        hidden_states = hidden_states.to(dtype=torch.float32)
         variance = hidden_states.pow(2).mean(-1, keepdim=True)
         hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
         return self.weight * hidden_states.to(input_dtype)
 
 
+# ====================== ROTARY POSITIONAL EMBEDDINGS ======================
+class RotaryEmbedding(nn.Module):
+    def __init__(self, dim, max_position_embeddings=2048, base=10000):
+        super().__init__()
+        self.dim = dim
+        self.max_position_embeddings = max_position_embeddings
+        self.base = base
+        inv_freq = 1.0 / (self.base ** (torch.arange(0, self.dim, 2).float() / self.dim))
+        self.register_buffer("inv_freq", inv_freq, persistent=False)
+
+    def forward(self, x, seq_len=None):
+        if seq_len is None:
+            seq_len = x.shape[1]
+        t = torch.arange(seq_len, device=x.device).type_as(self.inv_freq)
+        freqs = torch.einsum("i,j->ij", t, self.inv_freq)
+        emb = torch.cat((freqs, freqs), dim=-1)
+        cos = emb.cos()
+        sin = emb.sin()
+        return cos, sin
+
+def rotate_half(x):
+    x1, x2 = x.chunk(2, dim=-1)
+    return torch.cat((-x2, x1), dim=-1)
+
+def apply_rotary_pos_emb(q, k, cos, sin):
+    q_embed = (q * cos) + (rotate_half(q) * sin)
+    k_embed = (k * cos) + (rotate_half(k) * sin)
+    return q_embed, k_embed
+
+
 # ====================== DYNAMIC MoE GATE (no bias) ======================
 class DynamicMoEGate(nn.Module):
-    """
-    DYNMoE top-any gating as in the paper.
-    No bias term; only thresholds G are trainable.
-    """
     def __init__(self, config: DynMoEConfig):
         super().__init__()
         self.config = config
@@ -114,16 +139,13 @@ class DynamicMoEGate(nn.Module):
         self.hidden_size = config.hidden_size
         self.max_expert_num = config.max_expert_num
 
-        # expert representations Wg ∈ R^(K × d)
         self.weight = nn.Parameter(torch.empty((self.n_routed_experts, self.hidden_size)))
         nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
 
-        # per‑expert thresholds G ∈ R^K
         self.thresholds = nn.Parameter(
             torch.full((self.n_routed_experts,), DYNMOE_THRESHOLD_INIT)
         )
 
-        # buffers for adaptive tuning
         self.register_buffer('routing_records', torch.zeros(self.n_routed_experts))
         self.register_buffer('dropped_embeddings', torch.zeros(self.hidden_size))
         self.audit_counter = 0
@@ -131,18 +153,16 @@ class DynamicMoEGate(nn.Module):
 
     def forward(self, hidden_states):
         bsz, seq_len, h = hidden_states.shape
-        x = hidden_states.view(-1, h)                     # (B*S, d)
+        x = hidden_states.view(-1, h)
 
         norm_x = F.normalize(x, p=2, dim=-1)
         norm_w = F.normalize(self.weight, p=2, dim=-1)
-        s = torch.matmul(norm_x, norm_w.T)               # (B*S, K) cosine sim
+        s = torch.matmul(norm_x, norm_w.T)
 
-        # g = sign(σ(s) - σ(G))
         g = torch.sign(torch.sigmoid(s) - torch.sigmoid(self.thresholds))
-        g = (g > 0).float()                              # binary mask
+        g = (g > 0).float()
         k_r = g.sum(dim=-1, keepdim=True).clamp(min=1e-8)
 
-        # straight‑through estimator for the sign
         if self.training:
             soft_g = torch.sigmoid(s) - torch.sigmoid(self.thresholds)
             g = g + (soft_g - soft_g.detach())
@@ -169,7 +189,8 @@ class DynamicMoEGate(nn.Module):
                 self.routing_records += batch_activ
                 dropped_mask = (g.sum(dim=-1) == 0)
                 if dropped_mask.any():
-                    dropped_emb = x[dropped_mask].mean(dim=0)
+                    # FIXED: use SUM instead of MEAN to match paper's RS
+                    dropped_emb = x[dropped_mask].sum(dim=0)
                     self.dropped_embeddings += dropped_emb
 
         aux_loss = self._sparse_simple_loss() if self.training else None
@@ -229,7 +250,7 @@ class DynamicMoEGate(nn.Module):
         return {'added': added, 'removed_idx': removed_idx}
 
 
-# ====================== AUXILIARY LOSS ======================
+# ====================== AUXILIARY LOSS WRAPPER ======================
 class AddAuxiliaryLoss(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, loss):
@@ -246,7 +267,7 @@ class AddAuxiliaryLoss(torch.autograd.Function):
         return grad_output, grad_loss
 
 
-# ====================== DYNMoE MLP (with adaptive expert list) ======================
+# ====================== DYNMoE MLP ======================
 class DynMoEMLP(nn.Module):
     def __init__(self, config: DynMoEConfig):
         super().__init__()
@@ -262,7 +283,7 @@ class DynMoEMLP(nn.Module):
             intermediate_size = config.moe_intermediate_size
         return nn.Sequential(
             nn.Linear(config.hidden_size, intermediate_size),
-            nn.GELU() if config.hidden_act == "gelu" else nn.GELU(),
+            nn.GELU(approximate='tanh') if config.hidden_act == "gelu_new" else nn.GELU(),
             nn.Linear(intermediate_size, config.hidden_size),
         )
 
@@ -284,7 +305,6 @@ class DynMoEMLP(nn.Module):
         y = y.view(*orig_shape)
 
         if self.training and aux_loss is not None:
-            # Scale the auxiliary loss by the configured weight
             y = AddAuxiliaryLoss.apply(y, self.config.moe_aux_loss_weight * aux_loss)
 
         y = y + identity
@@ -301,9 +321,8 @@ class DynMoEMLP(nn.Module):
             self.experts.append(new_expert)
 
 
-# ====================== ATTENTION ======================
+# ====================== ATTENTION (with Rotary Embeddings) ======================
 class DynMoEGPTAttention(nn.Module):
-    # ... (unchanged, same as provided)
     def __init__(self, config, layer_idx=None):
         super().__init__()
         self.config = config
@@ -317,6 +336,8 @@ class DynMoEGPTAttention(nn.Module):
         self.o_proj = nn.Linear(self.num_heads * self.head_dim, self.hidden_size, bias=config.attention_bias)
         self.attention_dropout = config.attention_dropout
 
+        self.rotary_emb = RotaryEmbedding(self.head_dim, max_position_embeddings=config.max_position_embeddings)
+
     def forward(self, hidden_states, attention_mask=None, past_key_values=None, use_cache=False):
         bsz, q_len, _ = hidden_states.size()
         model_dtype = hidden_states.dtype
@@ -324,6 +345,9 @@ class DynMoEGPTAttention(nn.Module):
         query_states = self.q_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
         key_states = self.k_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
         value_states = self.v_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
+
+        cos, sin = self.rotary_emb(query_states, seq_len=q_len)
+        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
 
         if past_key_values is not None:
             key_states = torch.cat([past_key_values[0], key_states], dim=-2)
@@ -373,7 +397,7 @@ class DynMoEGPTBlock(nn.Module):
         else:
             self.mlp = nn.Sequential(
                 nn.Linear(config.hidden_size, config.intermediate_size),
-                nn.GELU() if config.hidden_act == "gelu" else nn.GELU(),
+                nn.GELU(approximate='tanh') if config.hidden_act == "gelu_new" else nn.GELU(),
                 nn.Linear(config.intermediate_size, config.hidden_size)
             )
 

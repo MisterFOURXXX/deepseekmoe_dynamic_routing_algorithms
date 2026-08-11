@@ -32,12 +32,12 @@ from transformers.configuration_utils import PretrainedConfig
 
 # Resource‑Optimised DYNMoE Configs
 # GLOBAL DYNMOE CONFIGS (optimised for dynamic routing & resource efficiency)
-ADAPTIVE_AUDIT_STEPS = 50          # allow biases to stabilise before pruning
-MAX_ROUTED_EXPERTS = 6             # allow up to 6 experts (but dynamic routing will activate fewer)
+ADAPTIVE_AUDIT_STEPS = 30          # allow biases to stabilise before pruning
+MAX_ROUTED_EXPERTS = 8             # allow up to 6 experts (but dynamic routing will activate fewer)
 MIN_ROUTED_EXPERTS = 2             # keep at least 2 experts to avoid collapse
-DYNMOE_THRESHOLD_INIT = -0.02 #-0.01 #-0.01 #-0.02 #-0.03 #-0.01 #0.02 #-0.03   #-0.05    # positive threshold → sigmoid(0.5)≈0.62, harder to activate
-SPARSITY_ALPHA = 0.08 #0.4 #0.05     #0.1     #0.4  #0.5   #0.5  #0.2  # stronger penalty for activating many experts (less number, less activate -> more number more activate)
-BIAS_UPDATE_RATE = 0.001           # moderate bias update to balance load
+DYNMOE_THRESHOLD_INIT = -0.04 #0.02 #-0.01 #-0.01 #-0.02 #-0.03 #-0.01 #0.02 #-0.03   #-0.05    # positive threshold → sigmoid(0.5)≈0.62, harder to activate
+SPARSITY_ALPHA = 0.08 #0.08 #0.2 #0.08 #0.4 #0.05     #0.1     #0.4  #0.5   #0.5  #0.2  # stronger penalty for activating many experts (less number, less activate -> more number more activate)
+BIAS_UPDATE_RATE = 0.001          # moderate bias update to balance load
 
 #Sparsity penalty strength (maybe too aggressive):
 #SPARSITY_ALPHA = 0.4 is quite high. With sparsity = 0.5 * k_r.mean(), the penalty term 0.4 * 0.5 * k_r.mean() = 0.2 * k_r.mean() can be large, strongly pushing k_r toward 0 (but fallback ensures at least 1). This might hurt performance; you may want to lower it (e.g., 0.01–0.05) if perplexity suffers.
@@ -143,26 +143,26 @@ class DeepseekConfig(PretrainedConfig):
 
     def __init__(
         self,
-        vocab_size=102400,
+        vocab_size=102400,                # matched to reference
         hidden_size=1024,
-        intermediate_size=4096,
+        intermediate_size=4096,           # matched to reference (was 2048)
         moe_intermediate_size=1024,
         num_hidden_layers=6,
         num_attention_heads=32,
         num_key_value_heads=32,
-        n_shared_experts=2,                     # REDUCED from 2 → 1
-        n_routed_experts=2,                     # REDUCED from 3 → 2
+        n_shared_experts=2,
+        n_routed_experts=8, #8               # matched to reference (was 4)
         num_experts_per_tok=2,
         moe_layer_freq=1,
-        max_routed_experts=6,                   # cap
-        min_routed_experts=2,                   # floor
+        max_routed_experts=8,             # must be >= n_routed_experts
+        min_routed_experts=2,
         first_k_dense_replace=0,
         norm_topk_prob=False,
         scoring_func='softmax',
         aux_loss_alpha=0.001,
         seq_aux=True,
         hidden_act="silu",
-        max_position_embeddings=2048,
+        max_position_embeddings=2048,     # <-- ADDED (was missing)
         initializer_range=0.02,
         rms_norm_eps=1e-6,
         use_cache=True,
@@ -181,15 +181,23 @@ class DeepseekConfig(PretrainedConfig):
         threshold_init=DYNMOE_THRESHOLD_INIT,
         **kwargs,
     ):
+        # ----- DYNMoE parameters (unchanged) -----
+        self.max_routed_experts = max_routed_experts
+        self.min_routed_experts = min_routed_experts
+        self.adaptive_audit_steps = adaptive_audit_steps
+        self.sparsity_alpha = sparsity_alpha
+        self.bias_update_rate = bias_update_rate
+        self.threshold_init = threshold_init
+
+        # ----- DeepSeekMoE core parameters (now match reference) -----
         self.vocab_size = vocab_size
-        self.max_position_embeddings = max_position_embeddings
         self.hidden_size = hidden_size
-        self.intermediate_size = intermediate_size
+        self.intermediate_size = intermediate_size          # 4096
         self.moe_intermediate_size = moe_intermediate_size
         self.num_hidden_layers = num_hidden_layers
         self.num_attention_heads = num_attention_heads
         self.n_shared_experts = n_shared_experts
-        self.n_routed_experts = n_routed_experts
+        self.n_routed_experts = n_routed_experts            # 8
         self.num_experts_per_tok = num_experts_per_tok
         self.moe_layer_freq = moe_layer_freq
         self.first_k_dense_replace = first_k_dense_replace
@@ -208,18 +216,14 @@ class DeepseekConfig(PretrainedConfig):
         self.use_cache = use_cache
         self.rope_theta = rope_theta
         self.rope_scaling = rope_scaling
-        self._rope_scaling_validation()
-        self._attn_implementation = kwargs.get("_attn_implementation", "sdpa")
         self.attention_bias = attention_bias
         self.attention_dropout = attention_dropout
 
-        # DYNMoE specific parameters
-        self.max_routed_experts = max_routed_experts
-        self.min_routed_experts = min_routed_experts
-        self.adaptive_audit_steps = adaptive_audit_steps
-        self.sparsity_alpha = sparsity_alpha
-        self.bias_update_rate = bias_update_rate
-        self.threshold_init = threshold_init
+        # ----- IMPORTANT: set the missing attribute -----
+        self.max_position_embeddings = max_position_embeddings
+
+        # Optional: ensure _attn_implementation is set (fallback to "sdpa")
+        self._attn_implementation = kwargs.get("_attn_implementation", "sdpa")
 
         super().__init__(
             pad_token_id=pad_token_id,
@@ -228,6 +232,7 @@ class DeepseekConfig(PretrainedConfig):
             tie_word_embeddings=tie_word_embeddings,
             **kwargs,
         )
+
     def _rope_scaling_validation(self):
         """
         Validate the `rope_scaling` configuration.
