@@ -14,7 +14,7 @@ from transformers.configuration_utils import PretrainedConfig
 ADAPTIVE_AUDIT_STEPS = 100           # paper suggests 100–300
 MAX_ROUTED_EXPERTS = 32              # max experts for Phi‑2
 DYNMOE_THRESHOLD_INIT = -0.02
-INITIAL_EXPERTS = 19                  # FIXED: paper starts with 2 experts for Phi‑2
+INITIAL_EXPERTS = 18                  # FIXED: paper starts with 2 experts for Phi‑2
 
 # ====================== PHI‑2 CONFIG (with DYNMoE extensions) ======================
 class DynMoEConfig(PretrainedConfig):
