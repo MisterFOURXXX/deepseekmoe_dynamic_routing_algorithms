@@ -7,7 +7,9 @@ import sys
 import math
 from transformers import TrainerCallback
 
-ADAPTIVE_AUDIT_STEPS = 100
+from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.config import (
+    ADAPTIVE_AUDIT_STEPS, 
+)
 
 class AdaptiveExpertTuningCallback(TrainerCallback):
     """

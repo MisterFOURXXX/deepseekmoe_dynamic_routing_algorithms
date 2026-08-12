@@ -32,12 +32,12 @@ from transformers.configuration_utils import PretrainedConfig
 
 # Resource‑Optimised DYNMoE Configs
 # GLOBAL DYNMOE CONFIGS (optimised for dynamic routing & resource efficiency)
-ADAPTIVE_AUDIT_STEPS = 100          # allow biases to stabilise before pruning
-MAX_ROUTED_EXPERTS = 8             # allow up to 6 experts (but dynamic routing will activate fewer)
+ADAPTIVE_AUDIT_STEPS = 60          # allow biases to stabilise before pruning
+MAX_ROUTED_EXPERTS = 9       #8      # allow up to 6 experts (but dynamic routing will activate fewer)
 MIN_ROUTED_EXPERTS = 2             # keep at least 2 experts to avoid collapse
-DYNMOE_THRESHOLD_INIT = 0.04 #0.02 #-0.01 #-0.01 #-0.02 #-0.03 #-0.01 #0.02 #-0.03   #-0.05    # positive threshold → sigmoid(0.5)≈0.62, harder to activate
-SPARSITY_ALPHA = 0.01 #0.08 #0.2 #0.08 #0.4 #0.05     #0.1     #0.4  #0.5   #0.5  #0.2  # stronger penalty for activating many experts (less number, less activate -> more number more activate)
-BIAS_UPDATE_RATE = 0.0005          # moderate bias update to balance load
+DYNMOE_THRESHOLD_INIT = 0.06 #0.06 #0.08 #0.04 #0.02 #-0.01 #-0.01 #-0.02 #-0.03 #-0.01 #0.02 #-0.03   #-0.05    # positive threshold → sigmoid(0.5)≈0.62, harder to activate
+#SPARSITY_ALPHA = 0.01 #0.08 #0.2 #0.08 #0.4 #0.05     #0.1     #0.4  #0.5   #0.5  #0.2  # stronger penalty for activating many experts (less number, less activate -> more number more activate)
+BIAS_UPDATE_RATE = 0.1   #0.1      # moderate bias update to balance load
 
 
 #Sparsity penalty strength (maybe too aggressive):
@@ -152,7 +152,7 @@ class DeepseekConfig(PretrainedConfig):
         num_attention_heads=32,
         num_key_value_heads=32,
         n_shared_experts=2,
-        n_routed_experts=8, #8               # matched to reference (was 4)
+        n_routed_experts=9, #8               # matched to reference (was 4)
         num_experts_per_tok=2,
         moe_layer_freq=1,
         max_routed_experts=MAX_ROUTED_EXPERTS,             # must be >= n_routed_experts
@@ -160,7 +160,7 @@ class DeepseekConfig(PretrainedConfig):
         first_k_dense_replace=0,
         norm_topk_prob=False,
         scoring_func='softmax',
-        aux_loss_alpha=0.1,
+        aux_loss_alpha=0.001, #0.01
         seq_aux=True,
         hidden_act="silu",
         max_position_embeddings=2048,     # <-- ADDED (was missing)
@@ -175,9 +175,9 @@ class DeepseekConfig(PretrainedConfig):
         rope_theta=10000.0,
         rope_scaling=None,
         attention_bias=False,
-        attention_dropout=0.0,
+        attention_dropout=0.01,
         adaptive_audit_steps=ADAPTIVE_AUDIT_STEPS,
-        sparsity_alpha=SPARSITY_ALPHA,
+        #sparsity_alpha=SPARSITY_ALPHA,
         bias_update_rate=BIAS_UPDATE_RATE,
         threshold_init=DYNMOE_THRESHOLD_INIT,
         **kwargs,
@@ -186,7 +186,7 @@ class DeepseekConfig(PretrainedConfig):
         self.max_routed_experts = max_routed_experts
         self.min_routed_experts = min_routed_experts
         self.adaptive_audit_steps = adaptive_audit_steps
-        self.sparsity_alpha = sparsity_alpha
+        #self.sparsity_alpha = sparsity_alpha
         self.bias_update_rate = bias_update_rate
         self.threshold_init = threshold_init
 
