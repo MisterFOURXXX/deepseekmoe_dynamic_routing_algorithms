@@ -72,6 +72,7 @@ from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.con
     DYNMOE_THRESHOLD_INIT,      #-0.02 #0.03 #-0.04 #-0.02, -0.03, -0.05 -0.08       # was 0.05 – sigmoid(-0.5)=0.38, ensures experts activate from start
     SPARSITY_ALPHA,             # coefficient for sparsity penalty in auxiliary loss
     BIAS_UPDATE_RATE,           # was 0.001 – stronger bias adjustments to quickly balance load
+    MAX_ACTIVE
 )
 
 """
@@ -359,13 +360,6 @@ class MoEGate(nn.Module):
             soft_g = torch.sigmoid(biased_s) - threshold_sigmoid
             g = g + (soft_g - soft_g.detach())
 
-        # ---- Hard capacity limit (code-level only) ----
-        MAX_ACTIVE = 2
-        top_vals, top_idx = torch.topk(g, k=min(MAX_ACTIVE, g.size(-1)), dim=-1)
-        g_limited = torch.zeros_like(g)
-        g_limited.scatter_(1, top_idx, top_vals)
-        g = g_limited
-
         k_r = g.sum(dim=-1, keepdim=True).clamp(min=1e-8)
         topk_weight = g / k_r
 
@@ -380,8 +374,9 @@ class MoEGate(nn.Module):
 
         # Aux loss very rarely
         self._aux_step_counter += 1
+        # In forward, after computing aux_loss:
         if self.training and self._aux_step_counter % 2000 == 0:
-            aux_loss = self._compute_loss(k_r)
+            aux_loss = self._compute_loss(k_r, token_counts)
         else:
             aux_loss = None
         if self._aux_step_counter > 4000:
@@ -390,15 +385,24 @@ class MoEGate(nn.Module):
         token_counts = g.sum(dim=0)
         return topk_weight, aux_loss, token_counts
 
-    def _compute_loss(self, k_r):
+    def _compute_loss(self, k_r, token_counts):
         W = self.weight
         N = W.shape[0]
         gram = torch.matmul(W, W.T)
         identity = torch.eye(N, device=W.device, dtype=W.dtype)
         diversity = torch.norm(gram - identity, p='fro') ** 2
         simplicity = (torch.norm(W, p=2) ** 2) / N
-        sparsity = k_r.mean()
-        return diversity + simplicity + self.config.sparsity_alpha * sparsity
+
+        # Load balance
+        total = token_counts.sum().float()
+        if total > 0:
+            f_i = token_counts / total
+        else:
+            f_i = torch.ones_like(token_counts) / N
+        target = 1.0 / N
+        load_balance = torch.sum((f_i - target) ** 2)
+
+        return diversity + simplicity + 0.1 * load_balance
 
     def update_biases(self, token_counts_per_expert):
         if not self.training:
