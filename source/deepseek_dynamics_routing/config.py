@@ -37,7 +37,7 @@ MAX_ROUTED_EXPERTS = 8             # allow up to 6 experts (but dynamic routing 
 MIN_ROUTED_EXPERTS = 2             # keep at least 2 experts to avoid collapse
 DYNMOE_THRESHOLD_INIT = 0.02 #0.02 #-0.01 #-0.01 #-0.02 #-0.03 #-0.01 #0.02 #-0.03   #-0.05    # positive threshold → sigmoid(0.5)≈0.62, harder to activate
 SPARSITY_ALPHA = 0.3 #0.08 #0.2 #0.08 #0.4 #0.05     #0.1     #0.4  #0.5   #0.5  #0.2  # stronger penalty for activating many experts (less number, less activate -> more number more activate)
-BIAS_UPDATE_RATE = 0.001          # moderate bias update to balance load
+BIAS_UPDATE_RATE = 0.0005          # moderate bias update to balance load
 
 #Sparsity penalty strength (maybe too aggressive):
 #SPARSITY_ALPHA = 0.4 is quite high. With sparsity = 0.5 * k_r.mean(), the penalty term 0.4 * 0.5 * k_r.mean() = 0.2 * k_r.mean() can be large, strongly pushing k_r toward 0 (but fallback ensures at least 1). This might hurt performance; you may want to lower it (e.g., 0.01–0.05) if perplexity suffers.

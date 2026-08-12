@@ -339,11 +339,7 @@ class MoEGate(nn.Module):
         self.audit_counter = 0
         self.audit_interval = config.adaptive_audit_steps
 
-        self.sparsity_alpha = config.sparsity_alpha   # weight for simplicity loss
         self._aux_step_counter = 0
-
-        # Hard cap: at most 2 experts per token (optional)
-        self.max_k = min(2, self.n_routed_experts)
 
     def forward(self, hidden_states):
         bsz, seq_len, h = hidden_states.shape
@@ -354,14 +350,11 @@ class MoEGate(nn.Module):
         s = torch.einsum('nd,ed->ne', norm_x, norm_w)
         biased_s = s + self.biases
 
-        # ---- Compute threshold sigmoid on the fly to ensure same device ----
         threshold_sigmoid = torch.sigmoid(self.thresholds)
-
-        # ----- Top‑Any gating (sigmoid + threshold) -----
         g = (torch.sigmoid(biased_s) > threshold_sigmoid).float()
-        k_r = g.sum(dim=-1, keepdim=True).clamp(min=0.0)   # can be zero
+        k_r = g.sum(dim=-1, keepdim=True).clamp(min=0.0)
 
-        # ----- Fallback for zero activations (test‑time safeguard) -----
+        # Test‑time safeguard
         if not self.training:
             zero_mask = (k_r.squeeze(-1) == 0)
             if zero_mask.any():
@@ -371,15 +364,15 @@ class MoEGate(nn.Module):
                 g = torch.where(zero_mask.unsqueeze(1), g_zero, g)
                 k_r = g.sum(dim=-1, keepdim=True).clamp(min=1.0)
 
-        # ----- Gradient trick (straight‑through estimator) -----
+        # Gradient trick
         if self.training:
             soft_g = torch.sigmoid(biased_s) - threshold_sigmoid
             g = g + (soft_g - soft_g.detach())
 
-        topk_weight = g / (k_r + 1e-8)   # unweighted average
+        topk_weight = g / (k_r + 1e-8)
         token_counts = g.sum(dim=0)
 
-        # ----- Track for adaptive tuning -----
+        # Tracking for adaptive tuning
         if self.training:
             self.audit_counter += 1
             with torch.no_grad():
@@ -388,7 +381,7 @@ class MoEGate(nn.Module):
                 if dropped_mask.any():
                     self.dropped_embeddings += x[dropped_mask].mean(dim=0)
 
-        # ----- Auxiliary loss (full DYNMoE loss) -----
+        # Auxiliary loss (computed less frequently to save compute)
         self._aux_step_counter += 1
         if self.training and self._aux_step_counter % 500 == 0:
             aux_loss = self._compute_loss(k_r)
@@ -400,26 +393,38 @@ class MoEGate(nn.Module):
         return topk_weight, aux_loss, token_counts
 
     def _compute_loss(self, k_r):
+        """Paper's auxiliary loss: diversity + simplicity."""
         W = self.weight
         N = W.shape[0]
         gram = torch.matmul(W, W.T)
         identity = torch.eye(N, device=W.device)
         diversity = torch.norm(gram - identity, p='fro') ** 2
         simplicity = (torch.norm(W, p=2) ** 2) / N
-        return diversity + simplicity   # no extra terms, no weighting
+        return diversity + simplicity
+
+    def update_biases(self, token_counts_per_expert):
+        """Loss‑free balancing bias update."""
+        if not self.training:
+            return
+        total = token_counts_per_expert.sum().float()
+        avg = total / self.n_routed_experts
+        violation = token_counts_per_expert - avg
+        with torch.no_grad():
+            self.biases -= self.config.bias_update_rate * torch.sign(violation)
 
     def adaptive_tune(self):
+        """Prune zero‑activation experts and add new ones for dropped tokens."""
         if self.audit_counter < self.audit_interval:
             return self.active_indices
 
         with torch.no_grad():
-            # ----- 1. Prune experts with zero activations -----
+            # Prune experts with zero activations (paper)
             active_mask = (self.routing_records > 0.0)
             if active_mask.sum() < self.min_routed_experts:
                 _, top_idx = torch.topk(self.routing_records, k=self.min_routed_experts)
                 active_mask[top_idx] = True
 
-            # ----- 2. Add new expert if needed (unchanged) -----
+            # Add new expert if dropped embeddings exist
             dropped_norm = torch.norm(self.dropped_embeddings)
             add_condition = (
                 dropped_norm > 0.1
@@ -438,7 +443,6 @@ class MoEGate(nn.Module):
                 self.thresholds.data = self.thresholds.data[active_mask]
                 self.biases.data = self.biases.data[active_mask]
 
-            # Update expert count and buffers (unchanged)
             self.n_routed_experts = self.weight.shape[0]
             self.routing_records = torch.zeros(self.n_routed_experts, device=self.routing_records.device)
             self.dropped_embeddings = torch.zeros(self.hidden_size, device=self.dropped_embeddings.device)
