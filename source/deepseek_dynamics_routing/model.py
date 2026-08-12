@@ -347,11 +347,11 @@ class MoEGate(nn.Module):
 
         norm_x = F.normalize(x, p=2, dim=-1)
         norm_w = F.normalize(self.weight, p=2, dim=-1)
-        s = torch.einsum('nd,ed->ne', norm_x, norm_w)
+        s = F.linear(x, self.weight)          # or keep cosine if quality matters
         biased_s = s + self.biases
 
         threshold_sigmoid = torch.sigmoid(self.thresholds)
-        g = (torch.sigmoid(biased_s) > threshold_sigmoid).float()
+        g = (torch.sigmoid(biased_s) > threshold_sigmoid).to(x.dtype)
         k_r = g.sum(dim=-1, keepdim=True).clamp(min=0.0)
 
         # Test‑time safeguard
@@ -369,8 +369,8 @@ class MoEGate(nn.Module):
             soft_g = torch.sigmoid(biased_s) - threshold_sigmoid
             g = g + (soft_g - soft_g.detach())
 
-        topk_weight = g / (k_r + 1e-8)
-        token_counts = g.sum(dim=0)
+        k_r = g.sum(dim=-1, keepdim=True).clamp(min=1e-8)
+        topk_weight = g / k_r
 
         # Tracking for adaptive tuning
         if self.training:
@@ -500,21 +500,16 @@ class DeepseekMoE(nn.Module):
 
     def sync_experts(self):
         active = self.gate.active_indices
-        current_count = len(self.experts)
-        needed = int(active.max().item()) + 1
-        if needed > current_count:
-            for _ in range(needed - current_count):
-                self.experts.append(
-                    DeepseekMLP(self.config, intermediate_size=self.config.moe_intermediate_size)
-                )
+        # Rebuild ModuleList only with kept experts
         new_experts = nn.ModuleList([self.experts[i] for i in active.tolist()])
+        # Explicitly delete old ones so Python GC + CUDA can free memory
+        del self.experts
         self.experts = new_experts
         self.n_routed_experts = len(active)
 
     def forward(self, hidden_states):
         identity = hidden_states
         orig_shape = hidden_states.shape
-
         topk_weight, aux_loss, token_counts = self.gate(hidden_states)
 
         if self.training:
@@ -522,14 +517,18 @@ class DeepseekMoE(nn.Module):
 
         x = hidden_states.view(-1, hidden_states.shape[-1])
         y = torch.zeros_like(x)
-        active_indices = self.gate.active_indices
 
-        expert_used = (topk_weight.sum(dim=0) > 0).nonzero(as_tuple=True)[0]
-        for i in expert_used:
-            actual_idx = active_indices[i].item()
-            expert_weight = topk_weight[:, i:i+1]
-            expert_out = self.experts[actual_idx](x)
-            y = y + expert_out * expert_weight
+        # Only touch experts that actually received tokens
+        expert_mask = (topk_weight.sum(dim=0) > 0)
+        active_local = expert_mask.nonzero(as_tuple=True)[0]
+
+        for i in active_local:
+            # i is the local index inside the current gate
+            w = topk_weight[:, i:i+1]          # (N, 1)
+            if w.sum() < 1e-8:
+                continue
+            out = self.experts[i](x)           # only this expert runs
+            y = y + out * w
 
         y = y.view(*orig_shape)
 
@@ -538,8 +537,7 @@ class DeepseekMoE(nn.Module):
 
         if hasattr(self, 'shared_experts'):
             y = y + self.shared_experts(identity)
-        y = y + identity
-        return y
+        return y + identity
 
     @torch.no_grad()
     def moe_infer(self, x, flat_expert_indices, flat_expert_weights):
