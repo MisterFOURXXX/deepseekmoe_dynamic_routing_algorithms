@@ -320,46 +320,69 @@ class MoEGate(nn.Module):
         self.min_routed_experts = config.min_routed_experts
         self.max_routed_experts = config.max_routed_experts
 
+        # Gating weights – will be normalised for cosine similarity
         self.weight = nn.Parameter(torch.empty((self.n_routed_experts, self.hidden_size)))
         nn.init.xavier_uniform_(self.weight, gain=0.5)
 
         self.thresholds = nn.Parameter(torch.full((self.n_routed_experts,), config.threshold_init))
         self.biases = nn.Parameter(torch.zeros(self.n_routed_experts), requires_grad=False)
 
+        # Buffers for adaptive tuning
         self.register_buffer('routing_records', torch.zeros(self.n_routed_experts))
         self.register_buffer('dropped_embeddings', torch.zeros(self.hidden_size))
         self.register_buffer('active_indices', torch.arange(self.n_routed_experts))
         self.audit_counter = 0
         self.audit_interval = config.adaptive_audit_steps
+
         self._aux_step_counter = 0
+        # Hard cap: at most 2 experts per token (can be 1 for extreme sparsity)
+        self.max_k = min(2, self.n_routed_experts)
 
     def forward(self, hidden_states):
         bsz, seq_len, h = hidden_states.shape
-        x = hidden_states.view(-1, h)
+        x = hidden_states.view(-1, h)  # (num_tokens, hidden_size)
 
-        s = F.linear(x, self.weight)
+        # ---- Cosine similarity ----
+        norm_x = F.normalize(x, p=2, dim=-1)
+        norm_w = F.normalize(self.weight, p=2, dim=-1)
+        s = torch.einsum('nd,ed->ne', norm_x, norm_w)  # (num_tokens, num_experts)
+
         biased_s = s + self.biases
         threshold_sigmoid = torch.sigmoid(self.thresholds)
 
-        g = (torch.sigmoid(biased_s) > threshold_sigmoid).to(x.dtype)
+        # ---- Top‑Any gating (sigmoid + threshold) ----
+        g = (torch.sigmoid(biased_s) > threshold_sigmoid).float()
+        k_r = g.sum(dim=-1, keepdim=True).clamp(min=0.0)
 
+        # ---- Enforce hard cap (max_k) ----
+        exceed_mask = (k_r.squeeze(-1) > self.max_k)
+        if exceed_mask.any():
+            # Keep only the top‑max_k experts for those tokens
+            topk_vals, topk_idx = torch.topk(biased_s[exceed_mask], k=self.max_k, dim=-1)
+            g_capped = torch.zeros_like(g[exceed_mask])
+            g_capped.scatter_(1, topk_idx, 1.0)
+            g[exceed_mask] = g_capped
+            k_r[exceed_mask] = self.max_k
+
+        # ---- Fallback for zero activations (inference only) ----
         if not self.training:
-            k_r = g.sum(dim=-1, keepdim=True)
             zero_mask = (k_r.squeeze(-1) == 0)
             if zero_mask.any():
                 max_idx = torch.argmax(biased_s, dim=-1)
                 g_zero = torch.zeros_like(g)
                 g_zero.scatter_(1, max_idx.unsqueeze(1), 1.0)
                 g = torch.where(zero_mask.unsqueeze(1), g_zero, g)
+                k_r = g.sum(dim=-1, keepdim=True).clamp(min=1.0)
 
+        # ---- Straight‑through gradient trick ----
         if self.training:
             soft_g = torch.sigmoid(biased_s) - threshold_sigmoid
             g = g + (soft_g - soft_g.detach())
 
-        k_r = g.sum(dim=-1, keepdim=True).clamp(min=1e-8)
-        topk_weight = g / k_r
-        token_counts = g.sum(dim=0)                     # <-- moved up
+        topk_weight = g / (k_r + 1e-8)   # unweighted average
+        token_counts = g.sum(dim=0)       # per‑expert token counts
 
+        # ---- Track for adaptive tuning ----
         if self.training:
             self.audit_counter += 1
             with torch.no_grad():
@@ -368,35 +391,32 @@ class MoEGate(nn.Module):
                 if dropped_mask.any():
                     self.dropped_embeddings += x[dropped_mask].mean(dim=0)
 
+        # ---- Auxiliary loss – computed every 50 steps to balance load ----
         self._aux_step_counter += 1
-        if self.training and self._aux_step_counter % 2000 == 0:
-            aux_loss = self._compute_loss(k_r, token_counts)   # now token_counts is defined
+        if self.training and self._aux_step_counter % 50 == 0:
+            aux_loss = self._compute_loss(k_r, token_counts)
         else:
             aux_loss = None
-        if self._aux_step_counter > 4000:
+        if self._aux_step_counter > 1000:
             self._aux_step_counter = 0
 
         return topk_weight, aux_loss, token_counts
 
     def _compute_loss(self, k_r, token_counts):
-        W = self.weight
-        N = W.shape[0]
-        gram = torch.matmul(W, W.T)
-        identity = torch.eye(N, device=W.device, dtype=W.dtype)
-        diversity = torch.norm(gram - identity, p='fro') ** 2
-        simplicity = (torch.norm(W, p=2) ** 2) / N
-
-        total = token_counts.sum().float()
-        if total > 0:
-            f_i = token_counts / total
-        else:
-            f_i = torch.ones_like(token_counts) / N
-        target = 1.0 / N
-        load_balance = torch.sum((f_i - target) ** 2)
-
-        return diversity + simplicity + 1.0 * load_balance   # weight increased to 1.0
+        """
+        Load‑balance loss: penalise uneven expert usage.
+        Uses variance of usage (f_i) as in Switch Transformer.
+        """
+        total = token_counts.sum().float() + 1e-8
+        f_i = token_counts / total                     # usage per expert
+        target = 1.0 / self.n_routed_experts
+        # Squared error to target
+        load_balance = torch.mean((f_i - target) ** 2)
+        # Weight reduced to 0.1 to avoid overwhelming main loss
+        return 0.1 * load_balance
 
     def update_biases(self, token_counts_per_expert):
+        """Loss‑free balancing (bias updates)"""
         if not self.training:
             return
         total = token_counts_per_expert.sum().float()
@@ -410,14 +430,23 @@ class MoEGate(nn.Module):
             return self.active_indices
 
         with torch.no_grad():
-            active_mask = (self.routing_records > 0.0)
+            # ---- Prune: keep only experts with activation > 30% of max ----
+            max_record = self.routing_records.max()
+            threshold = 0.3 * max_record
+            active_mask = (self.routing_records > threshold)
+
+            # Ensure we keep at least min_routed_experts
             if active_mask.sum() < self.min_routed_experts:
                 _, top_idx = torch.topk(self.routing_records, k=self.min_routed_experts)
                 active_mask[top_idx] = True
 
+            # ---- Add new expert only if dropped_norm is significant ----
             dropped_norm = torch.norm(self.dropped_embeddings)
-            add_condition = (dropped_norm > 0.1) and (self.n_routed_experts < self.max_routed_experts)
-
+            add_condition = (
+                dropped_norm > 0.5
+                and self.n_routed_experts < self.max_routed_experts
+                and self.n_routed_experts < self.min_routed_experts + 2
+            )
             if add_condition:
                 new_w = F.normalize(self.dropped_embeddings.unsqueeze(0), p=2, dim=-1)
                 self.weight.data = torch.cat([self.weight.data[active_mask], new_w], dim=0)
@@ -430,10 +459,12 @@ class MoEGate(nn.Module):
                 self.weight.data = self.weight.data[active_mask]
                 self.thresholds.data = self.thresholds.data[active_mask]
                 self.biases.data = self.biases.data[active_mask]
+                # Reset dropped embeddings
+                self.dropped_embeddings.zero_()
 
+            # Update state
             self.n_routed_experts = self.weight.shape[0]
             self.routing_records = torch.zeros(self.n_routed_experts, device=self.routing_records.device)
-            self.dropped_embeddings.zero_()
             self.active_indices = torch.arange(self.n_routed_experts, device=self.active_indices.device)
             self.audit_counter = 0
 
@@ -475,26 +506,26 @@ class DeepseekMoE(nn.Module):
         ])
 
         if self.n_shared_experts is not None and self.n_shared_experts > 0:
-            # Keep shared expert small
-            inter_size = min(config.moe_intermediate_size, config.hidden_size)
+            # Shared expert: keep small to save memory
+            inter_size = min(config.moe_intermediate_size, config.hidden_size * 2)
             self.shared_experts = DeepseekMLP(config, intermediate_size=inter_size)
 
     def sync_experts(self):
-        """Safe rebuild after pruning – guarantees index alignment."""
+        """Safely rebuild expert list to match gate's active indices."""
         active = self.gate.active_indices.tolist()
-        # Only keep the experts that still exist in the gate
         new_experts = nn.ModuleList()
         for i in active:
             if i < len(self.experts):
                 new_experts.append(self.experts[i])
             else:
-                # Should not happen, but protect against race
+                # Fallback (should not happen)
                 new_experts.append(
                     DeepseekMLP(self.config, intermediate_size=self.config.moe_intermediate_size)
                 )
-        del self.experts
+        # Replace the list
         self.experts = new_experts
         self.n_routed_experts = len(self.experts)
+        # Free memory on GPU
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
@@ -510,16 +541,17 @@ class DeepseekMoE(nn.Module):
         x = hidden_states.view(-1, hidden_states.shape[-1])
         y = torch.zeros_like(x)
 
-        # Truly sparse dispatch – only tokens that selected the expert
-        expert_mask = (topk_weight.sum(dim=0) > 1e-6)
-        for i in expert_mask.nonzero(as_tuple=True)[0].tolist():
+        # ---- Sparse dispatch: only loop over experts with positive weight ----
+        expert_used = (topk_weight.sum(dim=0) > 1e-6).nonzero(as_tuple=True)[0]
+        for i in expert_used.tolist():
             if i >= len(self.experts):
                 continue
-            token_mask = topk_weight[:, i] > 1e-6
+            expert_weight = topk_weight[:, i:i+1]
+            token_mask = (expert_weight > 1e-6).squeeze(-1)
             if not token_mask.any():
                 continue
             expert_out = self.experts[i](x[token_mask])
-            y[token_mask] = y[token_mask] + expert_out * topk_weight[token_mask, i:i+1]
+            y[token_mask] = y[token_mask] + expert_out * expert_weight[token_mask]
 
         y = y.view(*orig_shape)
 
@@ -532,6 +564,7 @@ class DeepseekMoE(nn.Module):
 
     @torch.no_grad()
     def moe_infer(self, x, flat_expert_indices, flat_expert_weights):
+        # (kept for compatibility – unused in this dynamic routing)
         expert_cache = torch.zeros_like(x)
         idxs = flat_expert_indices.argsort()
         tokens_per_expert = flat_expert_indices.bincount().cpu().numpy().cumsum(0)
@@ -547,7 +580,7 @@ class DeepseekMoE(nn.Module):
             expert_out.mul_(flat_expert_weights[idxs[start_idx:end_idx]])
             expert_cache.scatter_reduce_(0, exp_token_idx.view(-1, 1).repeat(1, x.shape[-1]), expert_out, reduce='sum')
         return expert_cache
-
+    
 # Copied from transformers.models.llama.modeling_llama.repeat_kv
 def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
     """
