@@ -393,14 +393,17 @@ class MoEGate(nn.Module):
         return topk_weight, aux_loss, token_counts
 
     def _compute_loss(self, k_r):
-        """Paper's auxiliary loss: diversity + simplicity."""
+        """Paper’s diversity + simplicity + explicit sparsity on average activated experts."""
         W = self.weight
         N = W.shape[0]
         gram = torch.matmul(W, W.T)
         identity = torch.eye(N, device=W.device)
         diversity = torch.norm(gram - identity, p='fro') ** 2
         simplicity = (torch.norm(W, p=2) ** 2) / N
-        return diversity + simplicity
+
+        # Explicit sparsity: push mean(k_r) down
+        sparsity = k_r.mean()          # or 0.5 * k_r.mean() if you prefer the comment style
+        return diversity + simplicity + self.config.sparsity_alpha * sparsity
 
     def update_biases(self, token_counts_per_expert):
         """Loss‑free balancing bias update."""
