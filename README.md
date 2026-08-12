@@ -79,6 +79,8 @@ cd /kaggle/working/deepseekmoe_dynamic_routing_algorithms
 # pip install -e .
 !pip install -e /kaggle/working/deepseekmoe_dynamic_routing_algorithms
 
+exit 0
+
 **Step 4: Execute Data Preprocessing**
 
 **Step 4.1:**
