@@ -13,8 +13,8 @@ from transformers.configuration_utils import PretrainedConfig
 # ====================== GLOBAL DYNMoE CONFIGS ======================
 ADAPTIVE_AUDIT_STEPS = 100           # paper suggests 100–300
 MAX_ROUTED_EXPERTS = 32              # max experts for Phi‑2
-DYNMOE_THRESHOLD_INIT = -0.02
-INITIAL_EXPERTS = 16                  # FIXED: paper starts with 2 experts for Phi‑2
+DYNMOE_THRESHOLD_INIT = 0.02
+INITIAL_EXPERTS = 14                  # FIXED: paper starts with 2 experts for Phi‑2
 
 # ====================== PHI‑2 CONFIG (with DYNMoE extensions) ======================
 class DynMoEConfig(PretrainedConfig):

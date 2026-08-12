@@ -32,11 +32,11 @@ from transformers.configuration_utils import PretrainedConfig
 
 # Resource‑Optimised DYNMoE Configs
 # GLOBAL DYNMOE CONFIGS (optimised for dynamic routing & resource efficiency)
-ADAPTIVE_AUDIT_STEPS = 30          # allow biases to stabilise before pruning
+ADAPTIVE_AUDIT_STEPS = 100          # allow biases to stabilise before pruning
 MAX_ROUTED_EXPERTS = 8             # allow up to 6 experts (but dynamic routing will activate fewer)
 MIN_ROUTED_EXPERTS = 2             # keep at least 2 experts to avoid collapse
-DYNMOE_THRESHOLD_INIT = -0.04 #0.02 #-0.01 #-0.01 #-0.02 #-0.03 #-0.01 #0.02 #-0.03   #-0.05    # positive threshold → sigmoid(0.5)≈0.62, harder to activate
-SPARSITY_ALPHA = 0.08 #0.08 #0.2 #0.08 #0.4 #0.05     #0.1     #0.4  #0.5   #0.5  #0.2  # stronger penalty for activating many experts (less number, less activate -> more number more activate)
+DYNMOE_THRESHOLD_INIT = 0.02 #0.02 #-0.01 #-0.01 #-0.02 #-0.03 #-0.01 #0.02 #-0.03   #-0.05    # positive threshold → sigmoid(0.5)≈0.62, harder to activate
+SPARSITY_ALPHA = 0.3 #0.08 #0.2 #0.08 #0.4 #0.05     #0.1     #0.4  #0.5   #0.5  #0.2  # stronger penalty for activating many experts (less number, less activate -> more number more activate)
 BIAS_UPDATE_RATE = 0.001          # moderate bias update to balance load
 
 #Sparsity penalty strength (maybe too aggressive):
