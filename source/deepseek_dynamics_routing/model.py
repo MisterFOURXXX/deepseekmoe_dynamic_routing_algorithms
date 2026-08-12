@@ -345,24 +345,22 @@ class MoEGate(nn.Module):
         bsz, seq_len, h = hidden_states.shape
         x = hidden_states.view(-1, h)
 
-        norm_x = F.normalize(x, p=2, dim=-1)
-        norm_w = F.normalize(self.weight, p=2, dim=-1)
-        s = F.linear(x, self.weight)          # or keep cosine if quality matters
+        # Cheaper gating (you already switched to F.linear)
+        s = F.linear(x, self.weight)
         biased_s = s + self.biases
 
         threshold_sigmoid = torch.sigmoid(self.thresholds)
         g = (torch.sigmoid(biased_s) > threshold_sigmoid).to(x.dtype)
-        k_r = g.sum(dim=-1, keepdim=True).clamp(min=0.0)
 
-        # Test‑time safeguard
+        # Test-time safeguard
         if not self.training:
+            k_r = g.sum(dim=-1, keepdim=True)
             zero_mask = (k_r.squeeze(-1) == 0)
             if zero_mask.any():
                 max_idx = torch.argmax(biased_s, dim=-1)
                 g_zero = torch.zeros_like(g)
                 g_zero.scatter_(1, max_idx.unsqueeze(1), 1.0)
                 g = torch.where(zero_mask.unsqueeze(1), g_zero, g)
-                k_r = g.sum(dim=-1, keepdim=True).clamp(min=1.0)
 
         # Gradient trick
         if self.training:
@@ -381,7 +379,7 @@ class MoEGate(nn.Module):
                 if dropped_mask.any():
                     self.dropped_embeddings += x[dropped_mask].mean(dim=0)
 
-        # Auxiliary loss (computed less frequently to save compute)
+        # Auxiliary loss (computed less frequently)
         self._aux_step_counter += 1
         if self.training and self._aux_step_counter % 500 == 0:
             aux_loss = self._compute_loss(k_r)
@@ -389,6 +387,9 @@ class MoEGate(nn.Module):
             aux_loss = None
         if self._aux_step_counter > 1000:
             self._aux_step_counter = 0
+
+        # *** THIS WAS MISSING ***
+        token_counts = g.sum(dim=0)
 
         return topk_weight, aux_loss, token_counts
 
