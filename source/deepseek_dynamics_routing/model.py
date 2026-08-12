@@ -72,7 +72,6 @@ from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.con
     DYNMOE_THRESHOLD_INIT,      #-0.02 #0.03 #-0.04 #-0.02, -0.03, -0.05 -0.08       # was 0.05 – sigmoid(-0.5)=0.38, ensures experts activate from start
     SPARSITY_ALPHA,             # coefficient for sparsity penalty in auxiliary loss
     BIAS_UPDATE_RATE,           # was 0.001 – stronger bias adjustments to quickly balance load
-    MAX_ACTIVE
 )
 
 """
@@ -342,10 +341,8 @@ class MoEGate(nn.Module):
         biased_s = s + self.biases
         threshold_sigmoid = torch.sigmoid(self.thresholds)
 
-        # Hard decision
         g = (torch.sigmoid(biased_s) > threshold_sigmoid).to(x.dtype)
 
-        # Test-time safeguard
         if not self.training:
             k_r = g.sum(dim=-1, keepdim=True)
             zero_mask = (k_r.squeeze(-1) == 0)
@@ -355,15 +352,14 @@ class MoEGate(nn.Module):
                 g_zero.scatter_(1, max_idx.unsqueeze(1), 1.0)
                 g = torch.where(zero_mask.unsqueeze(1), g_zero, g)
 
-        # Soft gradient (must be before capacity limit)
         if self.training:
             soft_g = torch.sigmoid(biased_s) - threshold_sigmoid
             g = g + (soft_g - soft_g.detach())
 
         k_r = g.sum(dim=-1, keepdim=True).clamp(min=1e-8)
         topk_weight = g / k_r
+        token_counts = g.sum(dim=0)                     # <-- moved up
 
-        # Tracking (cheap)
         if self.training:
             self.audit_counter += 1
             with torch.no_grad():
@@ -372,17 +368,14 @@ class MoEGate(nn.Module):
                 if dropped_mask.any():
                     self.dropped_embeddings += x[dropped_mask].mean(dim=0)
 
-        # Aux loss very rarely
         self._aux_step_counter += 1
-        # In forward, after computing aux_loss:
         if self.training and self._aux_step_counter % 2000 == 0:
-            aux_loss = self._compute_loss(k_r, token_counts)
+            aux_loss = self._compute_loss(k_r, token_counts)   # now token_counts is defined
         else:
             aux_loss = None
         if self._aux_step_counter > 4000:
             self._aux_step_counter = 0
 
-        token_counts = g.sum(dim=0)
         return topk_weight, aux_loss, token_counts
 
     def _compute_loss(self, k_r, token_counts):
