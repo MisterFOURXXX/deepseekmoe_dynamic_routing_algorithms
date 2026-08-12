@@ -35,7 +35,7 @@ from transformers.configuration_utils import PretrainedConfig
 ADAPTIVE_AUDIT_STEPS = 100          # allow biases to stabilise before pruning
 MAX_ROUTED_EXPERTS = 8             # allow up to 6 experts (but dynamic routing will activate fewer)
 MIN_ROUTED_EXPERTS = 2             # keep at least 2 experts to avoid collapse
-DYNMOE_THRESHOLD_INIT = -0.02 #0.02 #-0.01 #-0.01 #-0.02 #-0.03 #-0.01 #0.02 #-0.03   #-0.05    # positive threshold → sigmoid(0.5)≈0.62, harder to activate
+DYNMOE_THRESHOLD_INIT = 0.3 #0.02 #-0.01 #-0.01 #-0.02 #-0.03 #-0.01 #0.02 #-0.03   #-0.05    # positive threshold → sigmoid(0.5)≈0.62, harder to activate
 SPARSITY_ALPHA = 0 #0.08 #0.2 #0.08 #0.4 #0.05     #0.1     #0.4  #0.5   #0.5  #0.2  # stronger penalty for activating many experts (less number, less activate -> more number more activate)
 BIAS_UPDATE_RATE = 0.00005          # moderate bias update to balance load
 
@@ -160,7 +160,7 @@ class DeepseekConfig(PretrainedConfig):
         first_k_dense_replace=0,
         norm_topk_prob=False,
         scoring_func='softmax',
-        aux_loss_alpha=0.01,
+        aux_loss_alpha=0.1,
         seq_aux=True,
         hidden_act="silu",
         max_position_embeddings=2048,     # <-- ADDED (was missing)

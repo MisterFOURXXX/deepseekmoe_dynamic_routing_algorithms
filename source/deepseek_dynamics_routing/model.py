@@ -386,7 +386,6 @@ class MoEGate(nn.Module):
         diversity = torch.norm(gram - identity, p='fro') ** 2
         simplicity = (torch.norm(W, p=2) ** 2) / N
 
-        # Load balance
         total = token_counts.sum().float()
         if total > 0:
             f_i = token_counts / total
@@ -395,7 +394,7 @@ class MoEGate(nn.Module):
         target = 1.0 / N
         load_balance = torch.sum((f_i - target) ** 2)
 
-        return diversity + simplicity + 0.1 * load_balance
+        return diversity + simplicity + 1.0 * load_balance   # weight increased to 1.0
 
     def update_biases(self, token_counts_per_expert):
         if not self.training:
