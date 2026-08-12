@@ -34,7 +34,7 @@ from transformers.configuration_utils import PretrainedConfig
 # GLOBAL DYNMOE CONFIGS (optimised for dynamic routing & resource efficiency)
 ADAPTIVE_AUDIT_STEPS = 100          # allow biases to stabilise before pruning
 MAX_ROUTED_EXPERTS = 8             # allow up to 6 experts (but dynamic routing will activate fewer)
-MIN_ROUTED_EXPERTS = 2             # keep at least 2 experts to avoid collapse
+MIN_ROUTED_EXPERTS = 3             # keep at least 2 experts to avoid collapse
 DYNMOE_THRESHOLD_INIT = -0.02 #0.02 #-0.01 #-0.01 #-0.02 #-0.03 #-0.01 #0.02 #-0.03   #-0.05    # positive threshold → sigmoid(0.5)≈0.62, harder to activate
 SPARSITY_ALPHA = 0 #0.08 #0.2 #0.08 #0.4 #0.05     #0.1     #0.4  #0.5   #0.5  #0.2  # stronger penalty for activating many experts (less number, less activate -> more number more activate)
 BIAS_UPDATE_RATE = 0.00005          # moderate bias update to balance load
@@ -156,7 +156,7 @@ class DeepseekConfig(PretrainedConfig):
         num_experts_per_tok=2,
         moe_layer_freq=1,
         max_routed_experts=8,             # must be >= n_routed_experts
-        min_routed_experts=2,
+        min_routed_experts=3,
         first_k_dense_replace=0,
         norm_topk_prob=False,
         scoring_func='softmax',
