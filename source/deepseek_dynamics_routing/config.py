@@ -152,7 +152,7 @@ class DeepseekConfig(PretrainedConfig):
         num_attention_heads=32,
         num_key_value_heads=32,
         n_shared_experts=2,
-        n_routed_experts=9, #8               # matched to reference (was 4)
+        n_routed_experts=8, #8               # matched to reference (was 4)
         num_experts_per_tok=2,
         moe_layer_freq=1,
         max_routed_experts=MAX_ROUTED_EXPERTS,             # must be >= n_routed_experts

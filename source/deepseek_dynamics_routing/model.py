@@ -81,7 +81,7 @@ This code is based on EleutherAI's GPT-NeoX library and the GPT-NeoX
 and OPT implementations in this library. It has been modified from its
 original forms to accommodate minor architectural differences compared
 to GPT-NeoX and OPT used by the Meta AI team that trained the model.
- 
+
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -336,19 +336,24 @@ class MoEGate(nn.Module):
         bsz, seq_len, h = hidden_states.shape
         x = hidden_states.view(-1, h)
 
-        s = F.linear(x, self.weight)
+        s = F.linear(x, self.weight)                     # unbiased affinity
         biased_s = s + self.biases
         threshold_sigmoid = torch.sigmoid(self.thresholds)
 
         g = (torch.sigmoid(biased_s) > threshold_sigmoid).to(x.dtype)
 
+        # ---- FIX: test‑time safeguard uses unbiased affinity s, not biased_s ----
         if not self.training:
             k_r = g.sum(dim=-1, keepdim=True)
             zero_mask = (k_r.squeeze(-1) == 0)
             if zero_mask.any():
-                max_idx = torch.argmax(biased_s, dim=-1)
+                # Use sigmoid of unbiased affinity as per Equation (5)
+                s_sigmoid = torch.sigmoid(s)
+                max_idx = torch.argmax(s_sigmoid, dim=-1)
                 g_zero = torch.zeros_like(g)
-                g_zero.scatter_(1, max_idx.unsqueeze(1), 1.0)
+                # Ensure source tensor matches dtype of g_zero (fixes mixed-precision scatter error)
+                src = s_sigmoid.gather(1, max_idx.unsqueeze(1)).to(g_zero.dtype)
+                g_zero.scatter_(1, max_idx.unsqueeze(1), src)
                 g = torch.where(zero_mask.unsqueeze(1), g_zero, g)
 
         if self.training:
@@ -395,7 +400,6 @@ class MoEGate(nn.Module):
         target = 1.0 / N
         load_balance = torch.mean((f_i - target) ** 2)
 
-        # Keep the original loss weights (0.1 for load_balance as you had in the latest code)
         return diversity + 0.1 * simplicity + 0.1 * load_balance
 
     def update_biases(self, token_counts_per_expert):
@@ -445,7 +449,7 @@ class MoEGate(nn.Module):
             self.audit_counter = 0
 
         return self.active_indices
-        
+
 class AddAuxiliaryLoss(torch.autograd.Function):
     """
     The trick function of adding auxiliary (aux) loss,
@@ -464,7 +468,7 @@ class AddAuxiliaryLoss(torch.autograd.Function):
         if ctx.required_aux_loss:
             grad_loss = torch.ones(1, dtype=ctx.dtype, device=grad_output.device)
         return grad_output, grad_loss
-    
+
 # REVISED DeepseekMoE #####################################
 # REVISED DeepseekMoE #####################################
 class DeepseekMoE(nn.Module):
@@ -481,10 +485,12 @@ class DeepseekMoE(nn.Module):
             for _ in range(config.n_routed_experts)
         ])
 
-        if self.n_shared_experts is not None and self.n_shared_experts > 0:
-            # Shared expert: keep small to save memory
-            inter_size = min(config.moe_intermediate_size, config.hidden_size * 2)
-            self.shared_experts = DeepseekMLP(config, intermediate_size=inter_size)
+        # ---- FIX: Multiple independent shared experts ----
+        if config.n_shared_experts is not None and config.n_shared_experts > 0:
+            self.shared_experts = nn.ModuleList([
+                DeepseekMLP(config, intermediate_size=config.moe_intermediate_size)
+                for _ in range(config.n_shared_experts)
+            ])
 
     def sync_experts(self):
         """Safely rebuild expert list to match gate's active indices."""
@@ -494,15 +500,12 @@ class DeepseekMoE(nn.Module):
             if i < len(self.experts):
                 new_experts.append(self.experts[i])
             else:
-                # Fallback (should not happen)
                 new_experts.append(
                     DeepseekMLP(self.config, intermediate_size=self.config.moe_intermediate_size)
                 )
-        # Replace the list
         del self.experts
         self.experts = new_experts
         self.n_routed_experts = len(self.experts)
-        # Free memory on GPU
         gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
@@ -536,8 +539,11 @@ class DeepseekMoE(nn.Module):
         if self.training and aux_loss is not None:
             y = AddAuxiliaryLoss.apply(y, aux_loss * self.config.aux_loss_alpha)
 
+        # ---- FIX: Sum all shared experts ----
         if hasattr(self, 'shared_experts'):
-            y = y + self.shared_experts(identity)
+            for expert in self.shared_experts:
+                y = y + expert(identity)
+
         return y + identity
 
     @torch.no_grad()
@@ -558,7 +564,7 @@ class DeepseekMoE(nn.Module):
             expert_out.mul_(flat_expert_weights[idxs[start_idx:end_idx]])
             expert_cache.scatter_reduce_(0, exp_token_idx.view(-1, 1).repeat(1, x.shape[-1]), expert_out, reduce='sum')
         return expert_cache
-    
+
 # Copied from transformers.models.llama.modeling_llama.repeat_kv
 def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
     """
@@ -1053,7 +1059,7 @@ class DeepseekDecoderLayer(nn.Module):
         self.mlp = DeepseekMoE(config) if (config.n_routed_experts is not None and
                                            layer_idx >= config.first_k_dense_replace and
                                            layer_idx % config.moe_layer_freq == 0) else DeepseekMLP(config)
-       
+
         self.input_layernorm = DeepseekRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.post_attention_layernorm = DeepseekRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
 
