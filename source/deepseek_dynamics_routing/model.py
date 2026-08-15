@@ -316,8 +316,8 @@ class MoEGate(nn.Module):
         self.config = config
         self.n_routed_experts = min(config.n_routed_experts, config.max_routed_experts)
         self.hidden_size = config.hidden_size
-        self.min_routed_experts = config.min_routed_experts
-        self.max_routed_experts = config.max_routed_experts
+        self.min_routed_experts = getattr(config, 'min_routed_experts', 2)
+        self.max_routed_experts = getattr(config, 'max_routed_experts', 8)
 
         self.weight = nn.Parameter(torch.empty((self.n_routed_experts, self.hidden_size)))
         nn.init.xavier_uniform_(self.weight, gain=0.5)
@@ -327,41 +327,39 @@ class MoEGate(nn.Module):
 
         self.register_buffer('routing_records', torch.zeros(self.n_routed_experts))
         self.register_buffer('dropped_embeddings', torch.zeros(self.hidden_size))
-        self.register_buffer('active_indices', torch.arange(self.n_routed_experts))
+        self.register_buffer('active_mask', torch.ones(self.n_routed_experts, dtype=torch.bool))
         self.audit_counter = 0
-        self.audit_interval = config.adaptive_audit_steps
+        self.audit_interval = getattr(config, 'adaptive_audit_steps', 500)  # not too frequent
         self._aux_step_counter = 0
+        self._needs_sync = False          # flag for the callback
 
     def forward(self, hidden_states):
         bsz, seq_len, h = hidden_states.shape
         x = hidden_states.view(-1, h)
 
-        s = F.linear(x, self.weight)                     # unbiased affinity
+        x_norm = F.normalize(x, p=2, dim=-1, eps=1e-6)
+        w_norm = F.normalize(self.weight, p=2, dim=-1, eps=1e-6)
+        s = F.linear(x_norm, w_norm)
+
         biased_s = s + self.biases
-        threshold_sigmoid = torch.sigmoid(self.thresholds)
+        thresh = torch.sigmoid(self.thresholds)
+        sig = torch.sigmoid(biased_s)
 
-        g = (torch.sigmoid(biased_s) > threshold_sigmoid).to(x.dtype)
+        g = (sig > thresh).to(dtype=x.dtype)
+        g = g * self.active_mask.to(g.dtype)
 
-        # ---- FIX: test‑time safeguard uses unbiased affinity s, not biased_s ----
         if not self.training:
-            k_r = g.sum(dim=-1, keepdim=True)
-            zero_mask = (k_r.squeeze(-1) == 0)
-            if zero_mask.any():
-                # Use sigmoid of unbiased affinity as per Equation (5)
-                s_sigmoid = torch.sigmoid(s)
-                max_idx = torch.argmax(s_sigmoid, dim=-1)
-                g_zero = torch.zeros_like(g)
-                # Ensure source tensor matches dtype of g_zero (fixes mixed-precision scatter error)
-                src = s_sigmoid.gather(1, max_idx.unsqueeze(1)).to(g_zero.dtype)
-                g_zero.scatter_(1, max_idx.unsqueeze(1), src)
-                g = torch.where(zero_mask.unsqueeze(1), g_zero, g)
+            with torch.no_grad():
+                zero_mask = (g.sum(dim=-1) == 0)
+                if zero_mask.any():
+                    max_idx = s.argmax(dim=-1)
+                    g[zero_mask] = 0.0
+                    g[zero_mask, max_idx[zero_mask]] = 1.0
 
         if self.training:
-            soft_g = torch.sigmoid(biased_s) - threshold_sigmoid
-            g = g + (soft_g - soft_g.detach())
+            soft = sig - thresh
+            g = g + (soft - soft.detach()) * self.active_mask.to(g.dtype)
 
-        k_r = g.sum(dim=-1, keepdim=True).clamp(min=1e-8)
-        topk_weight = g / k_r
         token_counts = g.sum(dim=0)
 
         if self.training:
@@ -372,83 +370,77 @@ class MoEGate(nn.Module):
                 if dropped_mask.any():
                     self.dropped_embeddings += x[dropped_mask].mean(dim=0)
 
-        self._aux_step_counter += 1
-        if self.training and self._aux_step_counter % 2000 == 0:
-            aux_loss = self._compute_loss(token_counts, g)
+            self._aux_step_counter += 1
+            aux_loss = self._compute_loss() if (self._aux_step_counter % 2000 == 0) else None
+            if self._aux_step_counter > 4000:
+                self._aux_step_counter = 0
         else:
             aux_loss = None
-        if self._aux_step_counter > 4000:
-            self._aux_step_counter = 0
 
-        return topk_weight, aux_loss, token_counts
+        return g, aux_loss, token_counts
 
-    def _compute_loss(self, token_counts, g):
+    def _compute_loss(self):
         W = self.weight
         N = W.shape[0]
-
-        gram = torch.matmul(W, W.T)
+        gram = W @ W.T
         identity = torch.eye(N, device=W.device, dtype=W.dtype)
         diversity = torch.norm(gram - identity, p='fro') ** 2
+        simplicity = W.pow(2).sum() / N
+        return diversity + 0.05 * simplicity
 
-        simplicity = (torch.norm(W, p=2) ** 2) / N
-
-        total = token_counts.sum().float()
-        if total > 0:
-            f_i = token_counts / total
-        else:
-            f_i = torch.ones_like(token_counts) / N
-        target = 1.0 / N
-        load_balance = torch.mean((f_i - target) ** 2)
-
-        return diversity + 0.1 * simplicity + 0.1 * load_balance
-
-    def update_biases(self, token_counts_per_expert):
+    def update_biases(self, token_counts):
         if not self.training:
             return
-        total = token_counts_per_expert.sum().float()
+        total = token_counts.sum().float().clamp(min=1.0)
         avg = total / max(self.n_routed_experts, 1)
-        violation = token_counts_per_expert - avg
         with torch.no_grad():
-            self.biases -= self.config.bias_update_rate * torch.sign(violation)
+            self.biases -= self.config.bias_update_rate * torch.sign(token_counts - avg)
 
     def adaptive_tune(self):
+        """Physical add / remove. Sets self._needs_sync = True when shape changes."""
         if self.audit_counter < self.audit_interval:
-            return self.active_indices
+            return
 
         with torch.no_grad():
-            # ---- MORE AGGRESSIVE PRUNING: keep only experts with >50% of max activation ----
-            max_record = self.routing_records.max()
-            threshold = 0.6 * max_record   # was 0.3
-            active_mask = (self.routing_records > threshold)
-
-            if active_mask.sum() < self.min_routed_experts:
-                _, top_idx = torch.topk(self.routing_records, k=self.min_routed_experts)
-                active_mask[top_idx] = True
+            active = self.routing_records > 0
+            if active.sum() < self.min_routed_experts:
+                _, top = torch.topk(self.routing_records, k=self.min_routed_experts)
+                active[top] = True
 
             dropped_norm = torch.norm(self.dropped_embeddings)
             add_condition = (dropped_norm > 2.0) and (self.n_routed_experts < self.max_routed_experts)
 
+            device = self.weight.device
+            old_n = self.n_routed_experts
+
             if add_condition:
                 new_w = F.normalize(self.dropped_embeddings.unsqueeze(0), p=2, dim=-1)
-                self.weight.data = torch.cat([self.weight.data[active_mask], new_w], dim=0)
-                new_th = torch.tensor([self.config.threshold_init], device=self.thresholds.device)
-                self.thresholds.data = torch.cat([self.thresholds.data[active_mask], new_th], dim=0)
-                new_bias = torch.zeros(1, device=self.biases.device)
-                self.biases.data = torch.cat([self.biases.data[active_mask], new_bias], dim=0)
-                active_mask = torch.cat([active_mask, torch.tensor([True], device=active_mask.device)])
+                self.weight = nn.Parameter(torch.cat([self.weight.data[active], new_w], dim=0))
+                self.thresholds = nn.Parameter(torch.cat([
+                    self.thresholds.data[active],
+                    torch.tensor([self.config.threshold_init], device=device)
+                ], dim=0))
+                self.biases = nn.Parameter(torch.cat([
+                    self.biases.data[active],
+                    torch.zeros(1, device=device)
+                ], dim=0), requires_grad=False)
+                active = torch.cat([active, torch.tensor([True], device=device)])
             else:
-                self.weight.data = self.weight.data[active_mask]
-                self.thresholds.data = self.thresholds.data[active_mask]
-                self.biases.data = self.biases.data[active_mask]
-                self.dropped_embeddings.zero_()
+                # prune
+                self.weight = nn.Parameter(self.weight.data[active])
+                self.thresholds = nn.Parameter(self.thresholds.data[active])
+                self.biases = nn.Parameter(self.biases.data[active], requires_grad=False)
 
-            self.n_routed_experts = self.weight.shape[0]
-            self.routing_records = torch.zeros(self.n_routed_experts, device=self.routing_records.device)
-            self.dropped_embeddings.zero_()
-            self.active_indices = torch.arange(self.n_routed_experts, device=self.active_indices.device)
+            new_n = self.weight.shape[0]
+            self.n_routed_experts = new_n
+
+            # Re-create fixed-size buffers
+            self.routing_records = torch.zeros(new_n, device=device)
+            self.dropped_embeddings = torch.zeros(self.hidden_size, device=device)
+            self.active_mask = torch.ones(new_n, dtype=torch.bool, device=device)
             self.audit_counter = 0
 
-        return self.active_indices
+            self._needs_sync = (new_n != old_n)
 
 class AddAuxiliaryLoss(torch.autograd.Function):
     """
@@ -476,7 +468,6 @@ class DeepseekMoE(nn.Module):
         super().__init__()
         self.config = config
         self.n_routed_experts = config.n_routed_experts
-        self.n_shared_experts = config.n_shared_experts
 
         self.gate = MoEGate(config)
 
@@ -485,7 +476,6 @@ class DeepseekMoE(nn.Module):
             for _ in range(config.n_routed_experts)
         ])
 
-        # ---- FIX: Multiple independent shared experts ----
         if config.n_shared_experts is not None and config.n_shared_experts > 0:
             self.shared_experts = nn.ModuleList([
                 DeepseekMLP(config, intermediate_size=config.moe_intermediate_size)
@@ -493,19 +483,26 @@ class DeepseekMoE(nn.Module):
             ])
 
     def sync_experts(self):
-        """Safely rebuild expert list to match gate's active indices."""
-        active = self.gate.active_indices.tolist()
+        """Rebuild expert ModuleList only when the gate actually changed size."""
+        if not getattr(self.gate, '_needs_sync', False):
+            return
+
+        active = self.gate.active_mask.nonzero(as_tuple=True)[0].tolist()
+        device = next(self.parameters()).device
+
         new_experts = nn.ModuleList()
         for i in active:
             if i < len(self.experts):
                 new_experts.append(self.experts[i])
             else:
                 new_experts.append(
-                    DeepseekMLP(self.config, intermediate_size=self.config.moe_intermediate_size)
+                    DeepseekMLP(self.config, intermediate_size=self.config.moe_intermediate_size).to(device)
                 )
-        del self.experts
+
         self.experts = new_experts
         self.n_routed_experts = len(self.experts)
+        self.gate._needs_sync = False
+
         gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
@@ -514,56 +511,35 @@ class DeepseekMoE(nn.Module):
         identity = hidden_states
         orig_shape = hidden_states.shape
 
-        topk_weight, aux_loss, token_counts = self.gate(hidden_states)
+        g, aux_loss, token_counts = self.gate(hidden_states)
 
         if self.training:
             self.gate.update_biases(token_counts)
 
-        x = hidden_states.view(-1, hidden_states.shape[-1])
+        x = hidden_states.view(-1, hidden_states.size(-1))
         y = torch.zeros_like(x)
 
-        # ---- Sparse dispatch: only loop over experts with positive weight ----
-        expert_used = (topk_weight.sum(dim=0) > 1e-6).nonzero(as_tuple=True)[0]
-        for i in expert_used.tolist():
-            if i >= len(self.experts):
-                continue
-            expert_weight = topk_weight[:, i:i+1]
-            token_mask = (expert_weight > 1e-6).squeeze(-1)
-            if not token_mask.any():
-                continue
-            expert_out = self.experts[i](x[token_mask])
-            y[token_mask] = y[token_mask] + expert_out * expert_weight[token_mask]
+        # g may have a different number of columns after a resize that has not yet been synced.
+        # After sync_experts the lengths match again.
+        n = min(g.shape[1], len(self.experts))
+        for i in range(n):
+            if self.gate.active_mask[i]:
+                mask = g[:, i] > 1e-6
+                if mask.any():
+                    y[mask] += self.experts[i](x[mask])
 
+        k_r = g.sum(dim=-1, keepdim=True).clamp(min=1.0)
+        y = y / k_r
         y = y.view(*orig_shape)
 
         if self.training and aux_loss is not None:
             y = AddAuxiliaryLoss.apply(y, aux_loss * self.config.aux_loss_alpha)
 
-        # ---- FIX: Sum all shared experts ----
         if hasattr(self, 'shared_experts'):
             for expert in self.shared_experts:
                 y = y + expert(identity)
 
         return y + identity
-
-    @torch.no_grad()
-    def moe_infer(self, x, flat_expert_indices, flat_expert_weights):
-        # (kept for compatibility – unused in this dynamic routing)
-        expert_cache = torch.zeros_like(x)
-        idxs = flat_expert_indices.argsort()
-        tokens_per_expert = flat_expert_indices.bincount().cpu().numpy().cumsum(0)
-        token_idxs = idxs // self.num_experts_per_tok
-        for i, end_idx in enumerate(tokens_per_expert):
-            start_idx = 0 if i == 0 else tokens_per_expert[i-1]
-            if start_idx == end_idx:
-                continue
-            expert = self.experts[i]
-            exp_token_idx = token_idxs[start_idx:end_idx]
-            expert_tokens = x[exp_token_idx]
-            expert_out = expert(expert_tokens)
-            expert_out.mul_(flat_expert_weights[idxs[start_idx:end_idx]])
-            expert_cache.scatter_reduce_(0, exp_token_idx.view(-1, 1).repeat(1, x.shape[-1]), expert_out, reduce='sum')
-        return expert_cache
 
 # Copied from transformers.models.llama.modeling_llama.repeat_kv
 def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
