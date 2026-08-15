@@ -1,9 +1,5 @@
 import os
 import sys
-repo_path = ".."
-os.chdir(repo_path)
-sys.path.insert(0, os.getcwd())
-
 import time
 import subprocess
 import math
@@ -126,9 +122,7 @@ class MoEMetricsCallback(TrainerCallback):
         self.is_dynmoe = None
         self._epoch_metrics_printed = False
 
-    # ------------------------------------------------------------------
     # TrainerCallback overrides
-    # ------------------------------------------------------------------
     def on_log(self, args, state, control, logs=None, **kwargs):
         if logs is not None and 'loss' in logs:
             self.last_train_loss = logs['loss']
@@ -190,7 +184,7 @@ class MoEMetricsCallback(TrainerCallback):
         moe_layers = self._get_moe_layers(unwrapped)
         num_moe_layers = len(moe_layers)
 
-        # ---------- Prepare validation hooks ----------
+        # Prepare validation hooks
         if self.is_dynmoe:
             layer_expert_counts = []
             val_hooks = []
@@ -228,7 +222,7 @@ class MoEMetricsCallback(TrainerCallback):
                 hook = layer.mlp.gate.register_forward_hook(val_hook_fn)
                 val_hooks.append(hook)
 
-        # ---------- Evaluation loop ----------
+        # Evaluation loop 
         from torch.utils.flop_counter import FlopCounterMode
         flop_counter = FlopCounterMode(unwrapped, display=False)
 
@@ -262,7 +256,7 @@ class MoEMetricsCallback(TrainerCallback):
         measured_flops = flop_counter.get_total_flops()
         gflops = measured_flops / 1e9
 
-        # ---------- Compute metrics ----------
+        # Compute metrics 
         if self.is_dynmoe:
             total_activations = sum(cnt.sum() for cnt in layer_expert_counts)
             avg_activated = total_activations / (total_valid_tokens * num_moe_layers + 1e-12)
@@ -337,9 +331,7 @@ class MoEMetricsCallback(TrainerCallback):
 
         model.train()
 
-    # ------------------------------------------------------------------
     # Helper methods
-    # ------------------------------------------------------------------
     def _get_layer_list(self, model):
         if hasattr(model, 'model') and hasattr(model.model, 'layers'):
             return model.model.layers

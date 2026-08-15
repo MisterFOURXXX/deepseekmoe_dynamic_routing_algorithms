@@ -1,6 +1,4 @@
 import sys
-#sys.path.append('..')
-
 import os
 import gc
 import torch
@@ -28,10 +26,6 @@ def clear_gpu_memory():
 
 # Helper: evaluate one model using the dedicated loader 
 def run_evaluate(label, model_path, EVAL_FILE_PATH):
-    """
-    Load a model from `model_path` (auto‑detects architecture),
-    evaluate it on the pre‑processed eval file, and free GPU memory.
-    """
     print("=" * 60)
     print(f"EVALUATING: {label}")
     print(f"Model path: {model_path}")

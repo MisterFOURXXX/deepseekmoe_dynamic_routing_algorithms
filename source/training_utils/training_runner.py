@@ -37,7 +37,7 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-# ---- DeepSpeed configuration ----
+# DeepSpeed configuration
 ds_config = {
     "train_batch_size": "auto",
     "train_micro_batch_size_per_gpu": "auto",
@@ -73,24 +73,10 @@ def _prepare_data(
     tokenizer_name: str = None,
     split_ratio: float = 0.8,
     random_seed: int = 42,
-    max_seq_len: int = MAX_SEQ_LEN   # defined elsewhere
+    max_seq_len: int = MAX_SEQ_LEN   
 ):
-    """
-    Load a preprocessed train_sequences.txt, split into train/val,
-    and tokenize using the appropriate tokenizer for the model.
-    
-    Args:
-        data_file_path: Path to the preprocessed text file (one sequence per line).
-        model_class: The model class (e.g., BaselineModel, DynmoeModel, DYNMoEBaseModel).
-        tokenizer_name: Explicit tokenizer name (overrides automatic selection).
-        split_ratio: Fraction of data to use for training (rest for validation).
-        random_seed: Seed for shuffling.
-        max_seq_len: Maximum sequence length for tokenization.
-    
-    Returns:
-        tokenizer, tokenized_datasets, data_collator
-    """
-    # 1. Choose tokenizer based on model class or explicit name
+
+    # Choose tokenizer based on model class or explicit name
     if tokenizer_name is None:
         if model_class is not None and model_class.__name__ == "DYNMoEBaseModel":
             # Use the tokenizer specified in the DYNMoE research paper.
@@ -103,27 +89,27 @@ def _prepare_data(
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    # 2. Load the preprocessed data
+    # Load the preprocessed data
     with open(data_file_path, "r", encoding="utf-8") as f:
         lines = [line.strip() for line in f if line.strip()]
 
     if not lines:
         raise ValueError(f"No data found in {data_file_path}")
 
-    # 3. Shuffle and split
+    # Shuffle and split
     rng = random.Random(random_seed)
     rng.shuffle(lines)
     split_idx = int(len(lines) * split_ratio)
     train_lines = lines[:split_idx]
     val_lines = lines[split_idx:]
 
-    # 4. Build DatasetDict
+    # Build DatasetDict
     from datasets import Dataset, DatasetDict
     train_dataset = Dataset.from_dict({"text": train_lines})
     val_dataset = Dataset.from_dict({"text": val_lines})
     dataset_dict = DatasetDict({"train": train_dataset, "validation": val_dataset})
 
-    # 5. Tokenize
+    # Tokenize
     def tokenize_function(examples):
         return tokenizer(
             examples["text"],
@@ -141,7 +127,7 @@ def _prepare_data(
         desc="Tokenizing datasets"
     )
 
-    # 6. Data collator for language modelling
+    # Data collator for language modelling
     data_collator = DataCollatorForLanguageModeling(
         tokenizer=tokenizer,
         mlm=False,
@@ -150,14 +136,11 @@ def _prepare_data(
 
     return tokenizer, tokenized_datasets, data_collator
 
-# ---- Core training function ----
+# Core training function
 def train_model(ModelClass, ConfigClass, output_dir, is_dynmoe=False,
                 tokenizer=None, tokenized_datasets=None, data_collator=None,
                 data_file_path=None, split_ratio=0.9, random_seed=42):
-    """
-    Train a model. If tokenizer/datasets are provided, use them; otherwise,
-    load and tokenize from the preprocessed text file.
-    """
+
     tokenizer, tokenized_datasets, data_collator = _prepare_data(
             data_file_path=data_file_path,
             model_class=ModelClass,
@@ -247,10 +230,7 @@ def train_model(ModelClass, ConfigClass, output_dir, is_dynmoe=False,
 def run_training(ModelClass, ConfigClass, output_dir, is_dynmoe=False,
                  tokenizer=None, tokenized_datasets=None, data_collator=None,
                  data_file_path=None, split_ratio=0.9, random_seed=42):
-    """
-    Run training and then fully clean up GPU/CPU memory and the dataset cache.
-    Returns nothing; the trainer is deleted internally.
-    """
+
     print("=" * 60)
     print(f"TRAINING {ModelClass.__name__}")
     print("=" * 60)
@@ -261,6 +241,6 @@ def run_training(ModelClass, ConfigClass, output_dir, is_dynmoe=False,
                           split_ratio=split_ratio,
                           random_seed=random_seed)
 
-    # ---- Cleanup ----
+    # Cleanup
     cleanup_trainer(trainer)
     clear_cached_data()

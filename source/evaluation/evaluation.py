@@ -14,12 +14,6 @@ from torch.utils.flop_counter import FlopCounterMode
 
 
 def evaluate_model(model, tokenizer, test_file, device, **kwargs):
-    """
-    Unified evaluation for all three architectures:
-      - Baseline DeepSeekMoE
-      - Pure DYNMoE
-      - Prototype (DeepSeekMoE + DYNMoE routing)
-    """
     # Default parameters
     max_seq_len = kwargs.get('max_seq_len', 256)
     eval_batch_size = kwargs.get('eval_batch_size', 8)
@@ -29,9 +23,8 @@ def evaluate_model(model, tokenizer, test_file, device, **kwargs):
     model.eval()
     unwrapped = model.module if hasattr(model, 'module') else model
 
-    # ------------------------------------------------------------
-    # 1. Determine architecture type
-    # ------------------------------------------------------------
+
+    # Determine architecture type
     is_pure_dynmoe = hasattr(unwrapped.config, 'model_type') and unwrapped.config.model_type == "dynmoe"
     is_routing_prototype = False
     if not is_pure_dynmoe:
@@ -45,9 +38,7 @@ def evaluate_model(model, tokenizer, test_file, device, **kwargs):
     # Determine number of experts (works for all)
     n_experts = getattr(unwrapped.config, 'n_routed_experts', None) or getattr(unwrapped.config, 'num_experts', 8)
 
-    # ------------------------------------------------------------
-    # 2. Expert‑balance hook (handles all gate types)
-    # ------------------------------------------------------------
+    # Expert‑balance hook (handles all gate types)
     class ExpertHook:
         def __init__(self, n_exp):
             self.global_counts = np.zeros(n_exp, dtype=np.float64)
@@ -95,15 +86,11 @@ def evaluate_model(model, tokenizer, test_file, device, **kwargs):
             # Baseline DeepSeekMoE gate
             hooks.append(module.register_forward_hook(hook_obj))
 
-    # ------------------------------------------------------------
-    # 3. Count MoE layers from attached hooks (works for all)
-    # ------------------------------------------------------------
+    # Count MoE layers from attached hooks (works for all)
     num_moe_layers = len(hooks)
     print(f"Attached {num_moe_layers} expert‑balance hooks")
 
-    # ------------------------------------------------------------
-    # 4. Load test data and prepare dataloader
-    # ------------------------------------------------------------
+    # Load test data and prepare dataloader
     # Read user utterances and references
     user_utterances = []
     references = []
@@ -144,9 +131,7 @@ def evaluate_model(model, tokenizer, test_file, device, **kwargs):
         pin_memory=True
     )
 
-    # ------------------------------------------------------------
-    # 5. Perplexity, MaxVIO, FLOPs
-    # ------------------------------------------------------------
+    # Perplexity, MaxVIO, FLOPs
     total_loss = 0.0
     total_tokens = 0
     flop_counter = FlopCounterMode(display=False)
@@ -202,9 +187,7 @@ def evaluate_model(model, tokenizer, test_file, device, **kwargs):
     measured_flops = flop_counter.get_total_flops()
     avg_flops = measured_flops / 1e9 if measured_flops else 0.0
 
-    # ------------------------------------------------------------
-    # 6. Active parameters & average activated experts
-    # ------------------------------------------------------------
+    # Active parameters & average activated experts
     num_moe_layers = len(hooks)   # each hook corresponds to one MoE layer
 
     if is_pure_dynmoe or is_routing_prototype:
@@ -219,24 +202,8 @@ def evaluate_model(model, tokenizer, test_file, device, **kwargs):
         n_shared = getattr(unwrapped.config, 'n_shared_experts', 0)
         active_params = num_moe_layers * (n_shared + avg_activated) * expert_params
         avg_activated = None
-    #if is_pure_dynmoe or is_routing_prototype:
-        # For DYNMoE variants, compute average activated experts per token
-        #total_activations = hook_obj.global_counts.sum()
-        # Use the number of MoE layers from hooks
-        #avg_activated = total_activations / (total_tokens * num_moe_layers) if total_tokens > 0 else 0.0
-        #expert_params = 3 * unwrapped.config.moe_intermediate_size * unwrapped.config.hidden_size
-        #active_params = num_moe_layers * avg_activated * expert_params
-    #else:
-        # Baseline: fixed top‑k
-        #avg_activated = getattr(unwrapped.config, 'num_experts_per_tok', 2)
-        #expert_params = 3 * unwrapped.config.moe_intermediate_size * unwrapped.config.hidden_size
-        #n_shared = getattr(unwrapped.config, 'n_shared_experts', 0)
-        #active_params = num_moe_layers * (n_shared + avg_activated) * expert_params
-        #avg_activated = None  # Not applicable for fixed top‑k
 
-    # ------------------------------------------------------------
-    # 7. Generation and quality metrics (ROUGE, BLEU)
-    # ------------------------------------------------------------
+    # Generation and quality metrics (ROUGE, BLEU)
     scorer = rouge_scorer.RougeScorer(["rouge1", "rouge2", "rougeL"], use_stemmer=True)
     smooth = SmoothingFunction().method4
 
@@ -312,9 +279,7 @@ def evaluate_model(model, tokenizer, test_file, device, **kwargs):
     avg_rouge2 = np.mean(rouge2_scores) if rouge2_scores else 0
     avg_rougeL = np.mean(rougeL_scores) if rougeL_scores else 0
 
-    # ------------------------------------------------------------
-    # 8. Assemble results
-    # ------------------------------------------------------------
+    # Assemble results
     results = {
         "Average TPS (generation)": f"{avg_tps:.1f}",
         "Average CPU Usage (%)": f"{avg_cpu:.1f}",

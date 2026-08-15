@@ -1,22 +1,17 @@
-# config.py
 import os
 import sys
-#repo_path =  ".."
-#os.chdir(repo_path)
-#sys.path.insert(0, os.getcwd())
-
 import math
 from typing import Optional, Dict, Any
 from transformers.utils import logging
 from transformers.configuration_utils import PretrainedConfig
 
-# ====================== GLOBAL DYNMoE CONFIGS ======================
+# GLOBAL DYNMoE CONFIGS 
 ADAPTIVE_AUDIT_STEPS = 100           # paper suggests 100–300
 MAX_ROUTED_EXPERTS = 32              # max experts for Phi‑2
 DYNMOE_THRESHOLD_INIT = 0.35
-INITIAL_EXPERTS = 15                  # FIXED: paper starts with 2 experts for Phi‑2
+INITIAL_EXPERTS = 15                  # Paper starts with 2 experts for Phi‑2
 
-# ====================== PHI‑2 CONFIG (with DYNMoE extensions) ======================
+# PHI‑2 CONFIG (with DYNMoE extensions) 
 class DynMoEConfig(PretrainedConfig):
     model_type = "dynmoe"
     
@@ -36,7 +31,7 @@ class DynMoEConfig(PretrainedConfig):
         bos_token_id=100000,
         eos_token_id=100001,
         # DYNMoE specific
-        num_experts=INITIAL_EXPERTS,      # FIXED: start with 2 experts
+        num_experts=INITIAL_EXPERTS,      
         max_expert_num=MAX_ROUTED_EXPERTS,
         replace_layers=None,              # default to all layers
         moe_intermediate_size=1024,

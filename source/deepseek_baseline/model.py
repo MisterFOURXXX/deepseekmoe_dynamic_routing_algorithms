@@ -1,9 +1,5 @@
 import os
 import sys
-#repo_path =  ".."
-#os.chdir(repo_path)                 # Move into the repo
-#sys.path.insert(0, os.getcwd())     # Ensure the repo root is on sys.path
-
 import math
 import warnings
 from typing import List, Optional, Tuple, Union
@@ -50,9 +46,6 @@ if is_torch_fx_available():
     if not is_torch_greater_or_equal_than_1_13:
         import torch.fx
         _prepare_4d_causal_attention_mask = torch.fx.wrap(_prepare_4d_causal_attention_mask)
-
-# Verify it works:
-import torch
 
 # Test if flash attention is available through PyTorch
 from torch.backends.cuda import flash_sdp_enabled, mem_efficient_sdp_enabled

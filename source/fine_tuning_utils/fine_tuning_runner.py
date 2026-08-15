@@ -42,7 +42,7 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-# ---- DeepSpeed config ----
+# DeepSpeed config
 ds_config = {
     "train_batch_size": "auto",
     "train_micro_batch_size_per_gpu": "auto",
@@ -73,7 +73,7 @@ ds_config = {
     "zero_allow_untested_optimizer": True
 }
 
-# ---- Data preparation (aligned with training) ----
+# Data preparation (aligned with training)
 def _prepare_data(
     data_file_path: str,
     tokenizer,
@@ -81,10 +81,6 @@ def _prepare_data(
     random_seed: int = 42,
     max_seq_len: int = MAX_SEQ_LEN
 ):
-    """
-    Load preprocessed text file, split into train/val, and tokenize.
-    Uses the provided tokenizer (from the pre‑trained model).
-    """
     # Load lines
     with open(data_file_path, "r", encoding="utf-8") as f:
         lines = [line.strip() for line in f if line.strip()]
@@ -134,11 +130,7 @@ def _prepare_data(
 def fine_tune_model(pretrained_path, output_dir,
                     data_file_path=None, split_ratio=0.8, random_seed=42,
                     tokenizer=None, tokenized_datasets=None, data_collator=None):
-    """
-    Fine‑tune a model. If tokenizer/datasets are provided, use them;
-    otherwise, load the pretrained model, its tokenizer, and prepare
-    data from the given text file.
-    """
+
     # Load pretrained model and its tokenizer
     model, tokenizer = load_model_and_tokenizer(pretrained_path)
 
@@ -238,9 +230,7 @@ def fine_tune_model(pretrained_path, output_dir,
 def run_fine_tuning(pretrained_path, output_dir,
                                data_file_path=None, split_ratio=0.8, random_seed=42,
                                tokenizer=None, tokenized_datasets=None, data_collator=None):
-    """
-    Run a fine‑tuning experiment and then clean up GPU memory.
-    """
+
     print("=" * 60)
     print(f"FINE-TUNING from {pretrained_path}")
     print("=" * 60)

@@ -329,7 +329,7 @@ class MoEGate(nn.Module):
         self.register_buffer('dropped_embeddings', torch.zeros(self.hidden_size))
         self.register_buffer('active_mask', torch.ones(self.n_routed_experts, dtype=torch.bool))
         self.audit_counter = 0
-        self.audit_interval = getattr(config, 'adaptive_audit_steps', 500)  # not too frequent
+        self.audit_interval = getattr(config, 'adaptive_audit_steps', 100)  # not too frequent
         self._aux_step_counter = 0
         self._needs_sync = False          # flag for the callback
 

@@ -1,7 +1,5 @@
 import sys
 import os
-#project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
-#sys.path.insert(0, project_root)
 import re
 import json
 import random
@@ -10,16 +8,6 @@ import contractions
 import dateparser
 from word2number import w2n
 from sklearn.model_selection import train_test_split
-#from deepseekmoe_dynamic_routing_algorithms.source.data_preprocessing.config import (
-#    DEFAULT_EVAL_PATH,
-#    DEFAULT_FINE_PATH,
-#    DEFAULT_TRAIN_PATH,
-#    DEFAULT_ZIP_PATH,
-#)
-# Change this:
-# from deepseekmoe_dynamic_routing_algorithms.source.data_preprocessing.config import (...)
-
-# To this:
 from source.data_preprocessing.config import (
     DEFAULT_EVAL_PATH,
     DEFAULT_FINE_PATH,
@@ -38,12 +26,7 @@ def load_and_preprocess_multiwoz(
     fine_output_path=DEFAULT_FINE_PATH,
     eval_output_path=DEFAULT_EVAL_PATH
 ):
-    """
-    Load MultiWOZ 2.3, extract dialogue pairs, and split into three sets.
-    Returns three lists of sequences (each sequence is a dict with 'text').
-    """
-
-    # ---- Extract and load raw data ----
+    # Extract and load raw data
     destination_dir = "MultiWOZ-coref-extract"
     dataset_dir = os.path.join(destination_dir, "MultiWOZ2_3")
     data_file = os.path.join(dataset_dir, "data.json")
@@ -62,7 +45,7 @@ def load_and_preprocess_multiwoz(
     with open(dialogue_acts_file, 'r') as f:
         dialogue_acts = json.load(f)
 
-    # ---- Helper functions ----
+    # Helper functions
     def get_primary_domain(dialogue):
         for key in ("new_goal", "goal"):
             domains = [d for d in dialogue.get(key, {}) if d != "user_action" and isinstance(dialogue[key].get(d), dict)]
@@ -78,7 +61,7 @@ def load_and_preprocess_multiwoz(
     def normalize_dialogue_id(dialogue_id):
         return dialogue_id[:-len('.json')] if dialogue_id.endswith('.json') else dialogue_id
 
-    # ---- Build raw list ----
+    # Build raw list
     raw_data = []
     for dialogue_id, dialogue in data.items():
         raw_data.append({
@@ -89,11 +72,11 @@ def load_and_preprocess_multiwoz(
             "ontology": ontology
         })
 
-    # ---- Sample if requested ----
+    # Sample if requested
     if sample_size is not None and sample_size < len(raw_data):
         raw_data = random.sample(raw_data, sample_size)
 
-    # ---- Split into three parts (stratified by domain) ----
+    # Split into three parts (stratified by domain)
     # First split: train_fine (train+fine) vs eval
     train_fine_raw, eval_raw = train_test_split(
         raw_data,
@@ -113,7 +96,7 @@ def load_and_preprocess_multiwoz(
 
     print(f"Split sizes: Train={len(train_raw)}, Fine={len(fine_raw)}, Eval={len(eval_raw)}")
 
-    # ---- Normalization functions (same as prototype) ----
+    # Normalization functions
     def normalize_general_text(text):
         text = contractions.fix(text, slang=False)
         text = re.sub(r'\s+', ' ', text).strip()
@@ -182,7 +165,7 @@ def load_and_preprocess_multiwoz(
         text = re.sub(r'\s+', ' ', text).strip()
         return text
 
-    # ---- Process dialogues ----
+    # Process dialogues
     def process_dialogue_turns(dialogue_data):
         turns = dialogue_data.get("log", [])
         processed_turns = []
@@ -210,7 +193,7 @@ def load_and_preprocess_multiwoz(
     fine_data = process_data(fine_raw)
     eval_data = process_data(eval_raw)
 
-    # ---- Create User/System pairs ----
+    # Create User/System pairs from processed dialogues
     def prepare_final_dataset(processed_dialogues):
         sequences = []
         for dialogue_item in processed_dialogues:
@@ -228,7 +211,7 @@ def load_and_preprocess_multiwoz(
     fine_sequences = prepare_final_dataset(fine_data)
     eval_sequences = prepare_final_dataset(eval_data)
 
-    # ---- Save to files ----
+    # Save to files
     def save_sequences_to_file(sequences, filename):
         with open(filename, "w", encoding="utf-8") as f:
             for seq in sequences:

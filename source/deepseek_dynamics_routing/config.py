@@ -1,55 +1,14 @@
 import os
 import sys
-#repo_path =  ".."
-#os.chdir(repo_path)                 # Move into the repo
-#sys.path.insert(0, os.getcwd())     # Ensure the repo root is on sys.path
-
 import math
 from transformers.utils import logging
 from transformers.configuration_utils import PretrainedConfig
 
-# GLOBAL DYNMOE CONFIGS (optimised for better activation and load balance)
-# GLOBAL DYNMOE CONFIGS (as described in the approach)
-#ADAPTIVE_AUDIT_STEPS = 10          # audit every 300 training steps (auto‑tuning)
-#MAX_ROUTED_EXPERTS = 6              # maximum number of routed experts (capped)
-#DYNMOE_THRESHOLD_INIT = 0.05         # initial trainable threshold G_j (sigmoid(G_j)=0.7)
-#BIAS_UPDATE_RATE = 0.001            # u from Algorithm 1 (Loss‑Free Balancing)
-
-# GLOBAL DYNMOE CONFIGS (revised for better balance and lower perplexity)
-#ADAPTIVE_AUDIT_STEPS = 10          # was 10 – allow biases to stabilise before expert pool changes
-#MAX_ROUTED_EXPERTS = 6              # was 6 – increase capacity to match baseline DeepSeekMoE
-#DYNMOE_THRESHOLD_INIT = -0.2        # was 0.05 – sigmoid(-0.2)=0.45, encourages more activation
-#BIAS_UPDATE_RATE = 0.01             # was 0.001 – stronger bias adjustments to quickly balance load
-
-# GLOBAL DYNMOE CONFIGS (optimised for lower MaxVIO and better efficiency)
-#ADAPTIVE_AUDIT_STEPS = 50          # was 10 – prevents premature expert removal, allows bias stabilisation
-#MAX_ROUTED_EXPERTS = 3              # keep 6 to limit active parameters (lower FLOPs than 8)
-#DYNMOE_THRESHOLD_INIT = 0.5 #-0.02 #0.03 #-0.04 #-0.02, -0.03, -0.05 -0.08       # was 0.05 – sigmoid(-0.5)=0.38, ensures experts activate from start
-#SPARSITY_ALPHA = 0.02               # coefficient for sparsity penalty in auxiliary loss
-#BIAS_UPDATE_RATE = 0.001             # was 0.001 – stronger bias adjustments to quickly balance load
-#MAX_ROUTED_EXPERTS = 2             # cap at 2
-#MIN_ROUTED_EXPERTS = 2             # floor (ensures at least 2)
-
-# Resource‑Optimised DYNMoE Configs
-# GLOBAL DYNMOE CONFIGS (optimised for dynamic routing & resource efficiency)
-#ADAPTIVE_AUDIT_STEPS = 60          # allow biases to stabilise before pruning
-#MAX_ROUTED_EXPERTS = 8       #8      # allow up to 6 experts (but dynamic routing will activate fewer)
-#MIN_ROUTED_EXPERTS = 4             # keep at least 2 experts to avoid collapse
-#DYNMOE_THRESHOLD_INIT = 0.06 #0.06 #0.08 #0.04 #0.02 #-0.01 #-0.01 #-0.02 #-0.03 #-0.01 #0.02 #-0.03   #-0.05    # positive threshold → sigmoid(0.5)≈0.62, harder to activate
-#SPARSITY_ALPHA = 0.01 #0.08 #0.2 #0.08 #0.4 #0.05     #0.1     #0.4  #0.5   #0.5  #0.2  # stronger penalty for activating many experts (less number, less activate -> more number more activate)
-#BIAS_UPDATE_RATE = 0.1  #0.1      # moderate bias update to balance load
-# Resource-optimised & paper-aligned
-ADAPTIVE_AUDIT_STEPS = 40          # much less frequent → big saving
+ADAPTIVE_AUDIT_STEPS = 100         
 MAX_ROUTED_EXPERTS   = 8
 MIN_ROUTED_EXPERTS   = 2
-DYNMOE_THRESHOLD_INIT = 0.35 #0.25         # sigmoid(0) = 0.5 → balanced start
-BIAS_UPDATE_RATE   = 0.0005   #0.0005         # very gentle (almost Loss-Free)
-
-
-#Sparsity penalty strength (maybe too aggressive):
-#SPARSITY_ALPHA = 0.4 is quite high. With sparsity = 0.5 * k_r.mean(), the penalty term 0.4 * 0.5 * k_r.mean() = 0.2 * k_r.mean() can be large, strongly pushing k_r toward 0 (but fallback ensures at least 1). This might hurt performance; you may want to lower it (e.g., 0.01–0.05) if perplexity suffers.
-
-# DYNMOE_THRESHOLD_INIT reduce + BIAS_UPDATE_RATE reduce -> reduce Maxvio & Perplexity & increase Active Params
+DYNMOE_THRESHOLD_INIT = 0.35 
+BIAS_UPDATE_RATE   = 0.0005   
 
 logger = logging.get_logger(__name__)
 
@@ -150,18 +109,18 @@ class DeepseekConfig(PretrainedConfig):
 
     def __init__(
         self,
-        vocab_size=102400,                # matched to reference
+        vocab_size=102400,                
         hidden_size=1024,
-        intermediate_size=4096,           # matched to reference (was 2048)
+        intermediate_size=4096,           
         moe_intermediate_size=1024,
         num_hidden_layers=6,
         num_attention_heads=32,
         num_key_value_heads=32,
         n_shared_experts=2,
-        n_routed_experts=4, #8               # matched to reference (was 4)
+        n_routed_experts=4, #8            
         num_experts_per_tok=2,
         moe_layer_freq=1,
-        max_routed_experts=MAX_ROUTED_EXPERTS,             # must be >= n_routed_experts
+        max_routed_experts=MAX_ROUTED_EXPERTS,            
         min_routed_experts=MIN_ROUTED_EXPERTS,
         first_k_dense_replace=0,
         norm_topk_prob=False,
@@ -169,7 +128,7 @@ class DeepseekConfig(PretrainedConfig):
         aux_loss_alpha=0.001, #0.01
         seq_aux=True,
         hidden_act="silu",
-        max_position_embeddings=2048,     # <-- ADDED (was missing)
+        max_position_embeddings=2048,  
         initializer_range=0.02,
         rms_norm_eps=1e-6,
         use_cache=True,
@@ -188,23 +147,22 @@ class DeepseekConfig(PretrainedConfig):
         threshold_init=DYNMOE_THRESHOLD_INIT,
         **kwargs,
     ):
-        # ----- DYNMoE parameters (unchanged) -----
+        # DYNMoE parameters (unchanged) 
         self.max_routed_experts = max_routed_experts
         self.min_routed_experts = min_routed_experts
         self.adaptive_audit_steps = adaptive_audit_steps
-        #self.sparsity_alpha = sparsity_alpha
         self.bias_update_rate = bias_update_rate
         self.threshold_init = threshold_init
 
-        # ----- DeepSeekMoE core parameters (now match reference) -----
+        # DeepSeekMoE core parameters (now match reference)
         self.vocab_size = vocab_size
         self.hidden_size = hidden_size
-        self.intermediate_size = intermediate_size          # 4096
+        self.intermediate_size = intermediate_size         
         self.moe_intermediate_size = moe_intermediate_size
         self.num_hidden_layers = num_hidden_layers
         self.num_attention_heads = num_attention_heads
         self.n_shared_experts = n_shared_experts
-        self.n_routed_experts = n_routed_experts            # 8
+        self.n_routed_experts = n_routed_experts           
         self.num_experts_per_tok = num_experts_per_tok
         self.moe_layer_freq = moe_layer_freq
         self.first_k_dense_replace = first_k_dense_replace
@@ -225,8 +183,6 @@ class DeepseekConfig(PretrainedConfig):
         self.rope_scaling = rope_scaling
         self.attention_bias = attention_bias
         self.attention_dropout = attention_dropout
-
-        # ----- IMPORTANT: set the missing attribute -----
         self.max_position_embeddings = max_position_embeddings
 
         # Optional: ensure _attn_implementation is set (fallback to "sdpa")

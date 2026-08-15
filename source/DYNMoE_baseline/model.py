@@ -1,9 +1,5 @@
 import os
 import sys
-#repo_path =  ".."
-#os.chdir(repo_path)                 # Move into the repo
-#sys.path.insert(0, os.getcwd())     # Ensure the repo root is on sys.path
-
 import torch
 import transformers
 import accelerate
@@ -49,7 +45,7 @@ if is_flash_attn_2_available():
     from flash_attn import flash_attn_func, flash_attn_varlen_func
     from flash_attn.bert_padding import index_first_axis, pad_input, unpad_input
 
-# FX wrapping (optional)
+# FX wrapping
 if is_torch_fx_available():
     if not is_torch_greater_or_equal_than_1_13:
         import torch.fx
@@ -72,9 +68,6 @@ from transformers.utils import logging
 from transformers import GenerationConfig
 from typing import List, Optional, Tuple, Union, Dict, Any
 
-# Verify it works:
-import torch
-
 # Test if flash attention is available through PyTorch
 from torch.backends.cuda import flash_sdp_enabled, mem_efficient_sdp_enabled
 
@@ -85,7 +78,7 @@ from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.config import
     INITIAL_EXPERTS
 )
 
-# ====================== RMS NORM (Phi‑2 uses RMSNorm) ======================
+# RMS NORM (Phi‑2 uses RMSNorm) 
 class DynMoERMSNorm(nn.Module):
     def __init__(self, hidden_size, eps=1e-5):
         super().__init__()
@@ -100,7 +93,7 @@ class DynMoERMSNorm(nn.Module):
         return self.weight * hidden_states.to(input_dtype)
 
 
-# ====================== ROTARY POSITIONAL EMBEDDINGS ======================
+# ROTARY POSITIONAL EMBEDDINGS
 class RotaryEmbedding(nn.Module):
     def __init__(self, dim, max_position_embeddings=2048, base=10000):
         super().__init__()
@@ -130,7 +123,7 @@ def apply_rotary_pos_emb(q, k, cos, sin):
     return q_embed, k_embed
 
 
-# ====================== DYNAMIC MoE GATE (no bias) ======================
+# DYNAMIC MoE GATE (no bias) 
 class DynamicMoEGate(nn.Module):
     def __init__(self, config: DynMoEConfig):
         super().__init__()
@@ -211,7 +204,7 @@ class DynamicMoEGate(nn.Module):
         added = False
         removed_idx = None
         with torch.no_grad():
-            # ---- removal ----
+            # expert removal
             if self.n_routed_experts > 2:
                 active = self.routing_records > 0
                 if not active.all():
@@ -227,7 +220,7 @@ class DynamicMoEGate(nn.Module):
                         removed_idx = idx
                         print(f"[DYNMoE] Removed expert at index {idx} → {self.n_routed_experts}")
 
-            # ---- addition ----
+            # expert addition
             if torch.norm(self.dropped_embeddings) > 1e-6 and self.n_routed_experts < self.max_expert_num:
                 new_w = F.normalize(self.dropped_embeddings.unsqueeze(0), p=2, dim=-1)
                 self.weight.data = torch.cat([self.weight.data, new_w], dim=0)
@@ -250,7 +243,7 @@ class DynamicMoEGate(nn.Module):
         return {'added': added, 'removed_idx': removed_idx}
 
 
-# ====================== AUXILIARY LOSS WRAPPER ======================
+# AUXILIARY LOSS WRAPPER 
 class AddAuxiliaryLoss(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, loss):
@@ -267,7 +260,7 @@ class AddAuxiliaryLoss(torch.autograd.Function):
         return grad_output, grad_loss
 
 
-# ====================== DYNMoE MLP ======================
+# DYNMoE MLP 
 class DynMoEMLP(nn.Module):
     def __init__(self, config: DynMoEConfig):
         super().__init__()
@@ -321,7 +314,7 @@ class DynMoEMLP(nn.Module):
             self.experts.append(new_expert)
 
 
-# ====================== ATTENTION (with Rotary Embeddings) ======================
+# ATTENTION (with Rotary Embeddings) 
 class DynMoEGPTAttention(nn.Module):
     def __init__(self, config, layer_idx=None):
         super().__init__()
@@ -381,7 +374,7 @@ class DynMoEGPTAttention(nn.Module):
         return attn_output, present_key_values
 
 
-# ====================== GPT BLOCK ======================
+# GPT BLOCK 
 class DynMoEGPTBlock(nn.Module):
     def __init__(self, config, layer_idx=0):
         super().__init__()
@@ -417,7 +410,7 @@ class DynMoEGPTBlock(nn.Module):
         return hidden_states, present_key_values
 
 
-# ====================== DECODER ======================
+# DECODER
 class DynMoEGPTDecoder(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -452,7 +445,7 @@ class DynMoEGPTDecoder(nn.Module):
         return hidden_states, presents
 
 
-# ====================== PreTrainedModel Base ======================
+# PreTrainedModel Base 
 class DynMoEPreTrainedModel(PreTrainedModel):
     config_class = DynMoEConfig
     base_model_prefix = "transformer"
@@ -471,7 +464,7 @@ class DynMoEPreTrainedModel(PreTrainedModel):
                 module.weight.data[module.padding_idx].zero_()
 
 
-# ====================== GPT Model ======================
+# GPT Model 
 class DynMoEGPTModel(DynMoEPreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
@@ -490,7 +483,7 @@ class DynMoEGPTModel(DynMoEPreTrainedModel):
         )
 
 
-# ====================== Causal LM ======================
+# Causal LM 
 class DynMoEForCausalLM(DynMoEPreTrainedModel):
     _tied_weights_keys = ["lm_head.weight"]
 

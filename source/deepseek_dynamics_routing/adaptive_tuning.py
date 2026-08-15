@@ -24,12 +24,12 @@ class AdaptiveExpertTuningCallback(TrainerCallback):
 
         unwrapped = model.module if hasattr(model, 'module') else model
 
-        # 1. Adaptive tune (may change parameter shapes)
+        # Adaptive tune (may change parameter shapes)
         for module in unwrapped.modules():
             if hasattr(module, 'adaptive_tune'):
                 module.adaptive_tune()
 
-        # 2. Sync ModuleLists
+        # Sync ModuleLists
         resized = False
         for module in unwrapped.modules():
             if hasattr(module, 'sync_experts'):
@@ -38,7 +38,7 @@ class AdaptiveExpertTuningCallback(TrainerCallback):
                 if getattr(module, 'n_routed_experts', None) != old_n:
                     resized = True
 
-        # 3. If anything was resized → rebuild optimizer from scratch
+        # If anything was resized then rebuild optimizer from scratch
         if resized and self.trainer is not None:
             print("[DYNMoE] Expert pool resized – rebuilding optimizer …")
             if self.trainer.optimizer is not None:

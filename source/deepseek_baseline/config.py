@@ -1,9 +1,5 @@
 import os
 import sys
-#repo_path =  ".."
-#os.chdir(repo_path)                 # Move into the repo
-#sys.path.insert(0, os.getcwd())     # Ensure the repo root is on sys.path
-
 from transformers.utils import logging
 from transformers.configuration_utils import PretrainedConfig
 
@@ -107,23 +103,23 @@ class DeepseekConfig(PretrainedConfig):
     def __init__(
         self,
         vocab_size=102400,
-        hidden_size=1024, #1024 (best) #768 #512,  ######## retain , 1024, high impact ########### original 512
-        intermediate_size=4096,  #4096 (best) #3072, #2048 #11008,   # 4*hidden_size, 6400, 4096 ########## original 2048
-        moe_intermediate_size=1024, #1024 (best) #768, #512,  # each expert capacity ######### original 512
-        num_hidden_layers=6, #6 (best) #8  # complex reasoning, 8, 16 ######## 4 original
-        num_attention_heads=32,  # 8 ### original 32
-        num_key_value_heads=32,  # equal to num_attention_heads, 8 ### original 32
-        n_shared_experts=2, # 2    # None
-        n_routed_experts=8,   # None
-        num_experts_per_tok=2,  # None
+        hidden_size=1024,
+        intermediate_size=4096, 
+        moe_intermediate_size=1024, 
+        num_hidden_layers=6, 
+        num_attention_heads=32, 
+        num_key_value_heads=32,  
+        n_shared_experts=2, 
+        n_routed_experts=8,  
+        num_experts_per_tok=2,  
         moe_layer_freq = 1,
-        first_k_dense_replace = 0, #1,  #1 or 2 ##### 0
+        first_k_dense_replace = 0, 
         norm_topk_prob = False,
         scoring_func = 'softmax',
-        aux_loss_alpha = 0.001,   # original 0.001
+        aux_loss_alpha = 0.001,  
         seq_aux = True,
         hidden_act="silu",
-        max_position_embeddings=2048,  #512 or retain
+        max_position_embeddings=2048, 
         initializer_range=0.02,
         rms_norm_eps=1e-6,
         use_cache=True,
@@ -131,7 +127,7 @@ class DeepseekConfig(PretrainedConfig):
         bos_token_id=100000,
         eos_token_id=100001,
         pretraining_tp=1,
-        tie_word_embeddings=True, #False,  #True
+        tie_word_embeddings=True, 
         rope_theta=10000.0,
         rope_scaling=None,
         attention_bias=False,
