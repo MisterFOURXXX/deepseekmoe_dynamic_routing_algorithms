@@ -15,14 +15,14 @@ world_size = torch.cuda.device_count()
 ADAPTIVE_AUDIT_STEPS = 100        
 MAX_ROUTED_EXPERTS   = 8
 MIN_ROUTED_EXPERTS   = 2
-DYNMOE_THRESHOLD_INIT = 0.35 
+DYNMOE_THRESHOLD_INIT = -0.05 
 BIAS_UPDATE_RATE   = 0.0005   
 
 #  DYNMoE CONFIGS 
 ADAPTIVE_AUDIT_STEPS = 100          
 MAX_ROUTED_EXPERTS = 32              
-DYNMOE_THRESHOLD_INIT = 0.35
-INITIAL_EXPERTS = 15             
+DYNMOE_THRESHOLD_INIT = -0.05
+INITIAL_EXPERTS = 19             
 
 # Paths to pre‑trained models (output from training comparison)
 OUTPUT_BASELINE = "/kaggle/working/deepseekmoe_dynamic_routing_algorithms/checkpoints/baseline"
