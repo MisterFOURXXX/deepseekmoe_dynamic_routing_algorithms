@@ -1,9 +1,7 @@
 import os
 import sys
-#repo_path =  ".."
-#os.chdir(repo_path)                 # Move into the repo
-#sys.path.insert(0, os.getcwd())     # Ensure the repo root is on sys.path
-
+import gc
+import torch
 import math
 from transformers import TrainerCallback
 
@@ -11,7 +9,21 @@ from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.con
     ADAPTIVE_AUDIT_STEPS 
 )
 
+# AdaptiveExpertTuningCallback: Trainer callback for expert pool resizing
 class AdaptiveExpertTuningCallback(TrainerCallback):
+    """
+    Hugging Face Trainer callback that triggers adaptive expert tuning
+    (pruning/addition) every `audit_steps` training steps.
+
+    It calls adaptive_tune() on all gates, then sync_experts() on all MoE
+    layers. If the expert pool was resized, the optimizer is re‑created to
+    avoid parameter‑size mismatches (Section 3.4).
+
+    Attributes:
+        audit_steps: number of steps between audits
+        global_step: current training step counter
+        trainer: reference to the Trainer (set after creation)
+    """
     def __init__(self, audit_steps: int = ADAPTIVE_AUDIT_STEPS):
         self.audit_steps = audit_steps
         self.global_step = 0
@@ -24,12 +36,12 @@ class AdaptiveExpertTuningCallback(TrainerCallback):
 
         unwrapped = model.module if hasattr(model, 'module') else model
 
-        # Adaptive tune (may change parameter shapes)
+        # Adaptive tune on all gates
         for module in unwrapped.modules():
             if hasattr(module, 'adaptive_tune'):
                 module.adaptive_tune()
 
-        # Sync ModuleLists
+        # Sync ModuleLists (rebuild experts)
         resized = False
         for module in unwrapped.modules():
             if hasattr(module, 'sync_experts'):

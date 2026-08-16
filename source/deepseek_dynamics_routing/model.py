@@ -1,10 +1,5 @@
 import os
 import sys
-#repo_path =  ".."
-#os.chdir(repo_path)                 # Move into the repo
-#sys.path.insert(0, os.getcwd())     # Ensure the repo root is on sys.path
-# from .config import DeepseekConfig
-
 import math
 import warnings
 from typing import List, Optional, Tuple, Union
@@ -66,11 +61,11 @@ import torch
 from torch.backends.cuda import flash_sdp_enabled, mem_efficient_sdp_enabled
 
 from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.config import (
-    ADAPTIVE_AUDIT_STEPS,          # allow biases to stabilise before pruning
-    MAX_ROUTED_EXPERTS,       #8      # allow up to 6 experts (but dynamic routing will activate fewer)
-    MIN_ROUTED_EXPERTS,            # keep at least 2 experts to avoid collapse
-    DYNMOE_THRESHOLD_INIT, #0.06 #0.08 #0.04 #0.02 #-0.01 #-0.01 #-0.02 #-0.03 #-0.01 #0.02 #-0.03   #-0.05    # positive threshold → sigmoid(0.5)≈0.62, harder to activate
-    BIAS_UPDATE_RATE,   #0.1      # moderate bias update to balance load
+    ADAPTIVE_AUDIT_STEPS,         
+    MAX_ROUTED_EXPERTS,      
+    MIN_ROUTED_EXPERTS,          
+    DYNMOE_THRESHOLD_INIT, 
+    BIAS_UPDATE_RATE,   
 )
 
 """
@@ -306,70 +301,113 @@ class DeepseekMLP(nn.Module):
 
         return down_proj
 
-
-# MoEGate (Top-Any + Adaptive) ####################################################################
-# MoEGate (Top-Any + Adaptive) ####################################################################
-# MoEGate (Top-Any + Adaptive) with Sparsity Regularization ####################################################################
+# REVISED MoEGate: Top-Any Gating with Adaptive Expert Tuning ###############################################################
 class MoEGate(nn.Module):
+    """
+    Implements the Top-Any gating mechanism (Eq. 2–5) with dynamic expert
+    activation and adaptive tuning (pruning/addition) as described in the
+    approach chapter.
+
+    Key features:
+        - Cosine similarity affinity (Eq. 2)
+        - Trainable per‑expert thresholds for activation (Eq. 3)
+        - Dynamic number of activated experts per token (Eq. 4)
+        - Test‑time safeguard (Eq. 5)
+        - Loss‑free balancing (Eq. 7)
+        - Adaptive expert pruning/addition (Section 3.4)
+    """
     def __init__(self, config):
         super().__init__()
         self.config = config
+
+        # Current number of routed experts, capped by max_routed_experts
         self.n_routed_experts = min(config.n_routed_experts, config.max_routed_experts)
         self.hidden_size = config.hidden_size
-        self.min_routed_experts = getattr(config, 'min_routed_experts', 2)
-        self.max_routed_experts = getattr(config, 'max_routed_experts', 8)
+        self.min_routed_experts = getattr(config, 'min_routed_experts', MIN_ROUTED_EXPERTS)
+        self.max_routed_experts = getattr(config, 'max_routed_experts', MAX_ROUTED_EXPERTS)
 
+        # Gating weight matrix (Eq. 6)
         self.weight = nn.Parameter(torch.empty((self.n_routed_experts, self.hidden_size)))
         nn.init.xavier_uniform_(self.weight, gain=0.5)
 
+        # Trainable thresholds G_j (Eq. 3) and biases for loss‑free balancing (Eq. 7)
         self.thresholds = nn.Parameter(torch.full((self.n_routed_experts,), config.threshold_init))
         self.biases = nn.Parameter(torch.zeros(self.n_routed_experts), requires_grad=False)
 
+        # Buffers for adaptive tuning
         self.register_buffer('routing_records', torch.zeros(self.n_routed_experts))
         self.register_buffer('dropped_embeddings', torch.zeros(self.hidden_size))
         self.register_buffer('active_mask', torch.ones(self.n_routed_experts, dtype=torch.bool))
         self.audit_counter = 0
-        self.audit_interval = getattr(config, 'adaptive_audit_steps', 100)  # not too frequent
+        self.audit_interval = getattr(config, 'adaptive_audit_steps', ADAPTIVE_AUDIT_STEPS) 
         self._aux_step_counter = 0
-        self._needs_sync = False          # flag for the callback
+        self._needs_sync = False          # signals that the expert pool changed (flag for the callback)
 
     def forward(self, hidden_states):
+        """
+        Forward pass of the Top‑Any gate.
+
+        Computes:
+            - Cosine similarity s_j (Eq. 2)
+            - Gating decisions g_j (Eq. 3)
+            - Dynamic activated expert count k_r (Eq. 4)
+            - Test‑time safeguard (Eq. 5)
+            - Auxiliary loss (Eq. 6)
+            - Routing records for adaptive tuning
+
+        Returns:
+            g: binary/soft gating matrix (token × expert)
+            aux_loss: auxiliary loss (diversity + simplicity)
+            token_counts: number of tokens assigned to each expert
+        """
         bsz, seq_len, h = hidden_states.shape
         x = hidden_states.view(-1, h)
 
+        # Compute cosine similarity / Affinity computation (Eq. 2)
         x_norm = F.normalize(x, p=2, dim=-1, eps=1e-6)
         w_norm = F.normalize(self.weight, p=2, dim=-1, eps=1e-6)
-        s = F.linear(x_norm, w_norm)
+        s = F.linear(x_norm, w_norm)                            # unbiased cosine similarity
 
+        # Compute gating decisions (Eq. 3)
+        # Apply biases and sigmoid thresholds
         biased_s = s + self.biases
-        thresh = torch.sigmoid(self.thresholds)
-        sig = torch.sigmoid(biased_s)
+        thresh = torch.sigmoid(self.thresholds)    # sigmoid(G_j)
+        sig = torch.sigmoid(biased_s)              # sigmoid(s_j + G_j)
 
-        g = (sig > thresh).to(dtype=x.dtype)
-        g = g * self.active_mask.to(g.dtype)
+        # Gating decision (Eq. 3)
+        g = (sig > thresh).to(dtype=x.dtype)       # binary g_j
+        g = g * self.active_mask.to(g.dtype)       # soft pruning
 
+        # Test‑time safeguard (Eq. 5)
         if not self.training:
             with torch.no_grad():
                 zero_mask = (g.sum(dim=-1) == 0)
                 if zero_mask.any():
+                    # Fallback to top‑1 expert (highest raw affinity)
                     max_idx = s.argmax(dim=-1)
                     g[zero_mask] = 0.0
                     g[zero_mask, max_idx[zero_mask]] = 1.0
 
+        # Straight‑through estimator for training
         if self.training:
             soft = sig - thresh
             g = g + (soft - soft.detach()) * self.active_mask.to(g.dtype)
 
-        token_counts = g.sum(dim=0)
+        # Dynamic number of activated experts (Eq. 4)
+        token_counts = g.sum(dim=0)                  # total assignments per expert
 
+        # Adaptive tuning records
         if self.training:
             self.audit_counter += 1
             with torch.no_grad():
+                # Accumulate per‑expert activation counts
                 self.routing_records += g.mean(dim=0) * (bsz * seq_len)
+                # Accumulate embeddings of tokens that activated zero experts
                 dropped_mask = (g.sum(dim=-1) == 0)
                 if dropped_mask.any():
                     self.dropped_embeddings += x[dropped_mask].mean(dim=0)
 
+            # Auxiliary loss (Eq. 6) computed every 2000 steps
             self._aux_step_counter += 1
             aux_loss = self._compute_loss() if (self._aux_step_counter % 2000 == 0) else None
             if self._aux_step_counter > 4000:
@@ -380,6 +418,13 @@ class MoEGate(nn.Module):
         return g, aux_loss, token_counts
 
     def _compute_loss(self):
+        """
+        Computes the auxiliary loss (Eq. 6):
+            L_aux = ||W_g^T W_g - I||² + 0.05 * (1/N) * Σ||w_j||²
+
+        First term (Frobenius norm) encourages orthogonality (diversity).
+        Second term penalises large magnitudes (simplicity) for sparsity.
+        """
         W = self.weight
         N = W.shape[0]
         gram = W @ W.T
@@ -389,6 +434,13 @@ class MoEGate(nn.Module):
         return diversity + 0.05 * simplicity
 
     def update_biases(self, token_counts):
+        """
+        Loss‑free balancing bias update (Eq. 7):
+            b_j ← b_j - η · sign(c_j - c̄)
+        where c_j is the token count for expert j and c̄ is the average.
+
+        This helps balance expert load without affecting gradients.
+        """
         if not self.training:
             return
         total = token_counts.sum().float().clamp(min=1.0)
@@ -397,7 +449,16 @@ class MoEGate(nn.Module):
             self.biases -= self.config.bias_update_rate * torch.sign(token_counts - avg)
 
     def adaptive_tune(self):
-        """Physical add / remove. Sets self._needs_sync = True when shape changes."""
+        """
+        Adaptive expert pool resizing (Section 3.4).
+
+        Prunes experts with zero routing records (keeping at least min_routed_experts).
+        Adds a new expert if the dropped embedding norm exceeds 2.0 and the pool
+        is below max_routed_experts.
+
+        Sets self._needs_sync = True if the number of experts changed, so that
+        the caller (sync_experts) can rebuild the ModuleList of experts.
+        """
         if self.audit_counter < self.audit_interval:
             return
 
@@ -414,6 +475,7 @@ class MoEGate(nn.Module):
             old_n = self.n_routed_experts
 
             if add_condition:
+                # Add new expert: initialise weight from dropped embeddings
                 new_w = F.normalize(self.dropped_embeddings.unsqueeze(0), p=2, dim=-1)
                 self.weight = nn.Parameter(torch.cat([self.weight.data[active], new_w], dim=0))
                 self.thresholds = nn.Parameter(torch.cat([
@@ -426,7 +488,7 @@ class MoEGate(nn.Module):
                 ], dim=0), requires_grad=False)
                 active = torch.cat([active, torch.tensor([True], device=device)])
             else:
-                # prune
+                # Prune inactive experts
                 self.weight = nn.Parameter(self.weight.data[active])
                 self.thresholds = nn.Parameter(self.thresholds.data[active])
                 self.biases = nn.Parameter(self.biases.data[active], requires_grad=False)
@@ -442,10 +504,19 @@ class MoEGate(nn.Module):
 
             self._needs_sync = (new_n != old_n)
 
+# REVISED AddAuxiliaryLoss: Gradient trick for auxiliary loss ###############################################################
 class AddAuxiliaryLoss(torch.autograd.Function):
     """
     The trick function of adding auxiliary (aux) loss,
     which includes the gradient of the aux loss during backpropagation.
+
+    Custom autograd function that attaches an auxiliary loss to the output
+    during the forward pass, while allowing the loss to backpropagate
+    without affecting the main output's gradient.
+
+    Used to incorporate the auxiliary loss (Eq. 6) into the training loss
+    without changing the forward computation.
+
     """
     @staticmethod
     def forward(ctx, x, loss):
@@ -461,21 +532,35 @@ class AddAuxiliaryLoss(torch.autograd.Function):
             grad_loss = torch.ones(1, dtype=ctx.dtype, device=grad_output.device)
         return grad_output, grad_loss
 
-# REVISED DeepseekMoE #####################################
-# REVISED DeepseekMoE #####################################
+# REVISED DeepseekMoE: Integrated MoE Layer ###############################################################
 class DeepseekMoE(nn.Module):
+    """
+    Integrated MoE layer combining DeepSeekMoE's fine‑grained segmentation and
+    shared expert isolation with DYNMoE's dynamic routing and adaptive tuning.
+
+    The layer output is computed as (Eq. 1):
+        h_t^l = Σ_{i=1}^{K_s} FFN_i(u_t^l) + (1/k_r) Σ_{j∈activated} FFN_{K_r+j}(u_t^l) + u_t^l
+
+    where:
+        - K_s = number of shared experts (always active)
+        - k_r = number of dynamically activated routed experts
+        - routed experts are indexed after shared ones (offset K_r)
+    """
     def __init__(self, config):
         super().__init__()
         self.config = config
         self.n_routed_experts = config.n_routed_experts
 
+         # Dynamic gate (Top‑Any)
         self.gate = MoEGate(config)
 
+        # Routed expert modules (FFNs)
         self.experts = nn.ModuleList([
             DeepseekMLP(config, intermediate_size=config.moe_intermediate_size)
             for _ in range(config.n_routed_experts)
         ])
 
+        # Shared experts (always active) – ModuleList of independent experts
         if config.n_shared_experts is not None and config.n_shared_experts > 0:
             self.shared_experts = nn.ModuleList([
                 DeepseekMLP(config, intermediate_size=config.moe_intermediate_size)
@@ -483,7 +568,13 @@ class DeepseekMoE(nn.Module):
             ])
 
     def sync_experts(self):
-        """Rebuild expert ModuleList only when the gate actually changed size."""
+        """
+        Rebuild the routed expert ModuleList to match the gate's active experts
+        after a pool resizing (called when gate._needs_sync is True).
+
+        This ensures that the number of expert modules matches the gate's
+        current n_routed_experts, and frees memory of removed experts.
+        """
         if not getattr(self.gate, '_needs_sync', False):
             return
 
@@ -495,6 +586,7 @@ class DeepseekMoE(nn.Module):
             if i < len(self.experts):
                 new_experts.append(self.experts[i])
             else:
+                # New expert (added by adaptive_tune) – create fresh MLP
                 new_experts.append(
                     DeepseekMLP(self.config, intermediate_size=self.config.moe_intermediate_size).to(device)
                 )
@@ -503,42 +595,63 @@ class DeepseekMoE(nn.Module):
         self.n_routed_experts = len(self.experts)
         self.gate._needs_sync = False
 
+        # Clear GPU memory
         gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
     def forward(self, hidden_states):
+        """
+        Forward pass of the integrated MoE layer.
+
+        Steps:
+            1. Gate computes gating decisions and auxiliary loss.
+            2. Update biases (loss‑free balancing) if training.
+            3. Dispatch tokens to activated routed experts and compute unweighted average.
+            4. Add shared experts outputs.
+            5. Residual connection.
+
+        Returns:
+            MoE layer output with residual.
+        """
         identity = hidden_states
         orig_shape = hidden_states.shape
 
+        # Gate computes gating decisions and auxiliary loss / Gate forward (returns g, aux_loss, token_counts)
         g, aux_loss, token_counts = self.gate(hidden_states)
 
         if self.training:
             self.gate.update_biases(token_counts)
 
+        # Dispatch tokens to activated routed experts and compute unweighted average / Loss‑free balancing (Eq. 7) 
         x = hidden_states.view(-1, hidden_states.size(-1))
         y = torch.zeros_like(x)
 
+        # Sparse dispatch to routed experts
         # g may have a different number of columns after a resize that has not yet been synced.
         # After sync_experts the lengths match again.
-        n = min(g.shape[1], len(self.experts))
+        n = min(g.shape[1], len(self.experts))                     # safeguard after resizing
         for i in range(n):
             if self.gate.active_mask[i]:
                 mask = g[:, i] > 1e-6
                 if mask.any():
                     y[mask] += self.experts[i](x[mask])
 
+        # Unweighted average of routed experts (Eq. 1 second term)
         k_r = g.sum(dim=-1, keepdim=True).clamp(min=1.0)
         y = y / k_r
         y = y.view(*orig_shape)
 
+        # Attach auxiliary loss (Eq. 6)
         if self.training and aux_loss is not None:
             y = AddAuxiliaryLoss.apply(y, aux_loss * self.config.aux_loss_alpha)
 
+        # Add shared experts outputs (Eq. 1 first term)
         if hasattr(self, 'shared_experts'):
             for expert in self.shared_experts:
                 y = y + expert(identity)
 
+        # Residual connection (Eq. 1 third term)
         return y + identity
 
 # Copied from transformers.models.llama.modeling_llama.repeat_kv
