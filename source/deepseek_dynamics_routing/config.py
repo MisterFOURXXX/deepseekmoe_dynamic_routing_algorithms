@@ -4,7 +4,7 @@ import math
 from transformers.utils import logging
 from transformers.configuration_utils import PretrainedConfig
 
-ADAPTIVE_AUDIT_STEPS = 40         
+ADAPTIVE_AUDIT_STEPS = 100        
 MAX_ROUTED_EXPERTS   = 8
 MIN_ROUTED_EXPERTS   = 2
 DYNMOE_THRESHOLD_INIT = -0.05
