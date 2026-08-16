@@ -4,10 +4,10 @@ import math
 from transformers.utils import logging
 from transformers.configuration_utils import PretrainedConfig
 
-ADAPTIVE_AUDIT_STEPS = 100         
+ADAPTIVE_AUDIT_STEPS = 40         
 MAX_ROUTED_EXPERTS   = 8
 MIN_ROUTED_EXPERTS   = 2
-DYNMOE_THRESHOLD_INIT = 0.35 
+DYNMOE_THRESHOLD_INIT = -0.05
 BIAS_UPDATE_RATE   = 0.0005   
 
 logger = logging.get_logger(__name__)
@@ -117,7 +117,7 @@ class DeepseekConfig(PretrainedConfig):
         num_attention_heads=32,
         num_key_value_heads=32,
         n_shared_experts=2,
-        n_routed_experts=4, #8            
+        n_routed_experts=4,            
         num_experts_per_tok=2,
         moe_layer_freq=1,
         max_routed_experts=MAX_ROUTED_EXPERTS,            
@@ -125,7 +125,7 @@ class DeepseekConfig(PretrainedConfig):
         first_k_dense_replace=0,
         norm_topk_prob=False,
         scoring_func='softmax',
-        aux_loss_alpha=0.001, #0.01
+        aux_loss_alpha=0.001, 
         seq_aux=True,
         hidden_act="silu",
         max_position_embeddings=2048,  

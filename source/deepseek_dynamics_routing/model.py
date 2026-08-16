@@ -54,9 +54,6 @@ if is_torch_fx_available():
 # - Flash Attention kernels (when available)
 # - Memory-efficient attention
 
-# Verify it works:
-import torch
-
 # Test if flash attention is available through PyTorch
 from torch.backends.cuda import flash_sdp_enabled, mem_efficient_sdp_enabled
 
