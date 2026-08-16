@@ -117,7 +117,7 @@ class DeepseekConfig(PretrainedConfig):
         num_attention_heads=32,
         num_key_value_heads=32,
         n_shared_experts=2,
-        n_routed_experts=4,            
+        n_routed_experts=8,            # 4
         num_experts_per_tok=2,
         moe_layer_freq=1,
         max_routed_experts=MAX_ROUTED_EXPERTS,            
@@ -142,7 +142,6 @@ class DeepseekConfig(PretrainedConfig):
         attention_bias=False,
         attention_dropout=0.01,
         adaptive_audit_steps=ADAPTIVE_AUDIT_STEPS,
-        #sparsity_alpha=SPARSITY_ALPHA,
         bias_update_rate=BIAS_UPDATE_RATE,
         threshold_init=DYNMOE_THRESHOLD_INIT,
         **kwargs,

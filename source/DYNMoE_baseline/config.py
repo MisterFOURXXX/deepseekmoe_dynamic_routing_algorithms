@@ -9,7 +9,7 @@ from transformers.configuration_utils import PretrainedConfig
 ADAPTIVE_AUDIT_STEPS = 100
 MAX_ROUTED_EXPERTS = 32
 DYNMOE_THRESHOLD_INIT = -0.05
-INITIAL_EXPERTS = 19
+INITIAL_EXPERTS = 16
 
 class DynMoEConfig(PretrainedConfig):
     model_type = "dynmoe"

@@ -110,10 +110,7 @@ exit 0
 
 **Step 5.1: Configure Paths**
 
-Update the paths for data preprocessing and to save dataset 
-```text
-./source/data_preprocessing/config.py:
-```
+Update the paths for data preprocessing and to save dataset `./source/data_preprocessing/config.py`:
 ```python
 DEFAULT_ZIP_PATH = "./deepseekmoe_dynamic_routing_algorithms/dataset/MultiWOZ-coref/MultiWOZ2_3.zip"
 DEFAULT_TRAIN_PATH = "./deepseekmoe_dynamic_routing_algorithms/dataset/train_sequences.txt"

@@ -23,7 +23,7 @@ BIAS_UPDATE_RATE   = 0.0005
 ADAPTIVE_AUDIT_STEPS = 100           
 MAX_ROUTED_EXPERTS = 32              
 DYNMOE_THRESHOLD_INIT = -0.05
-INITIAL_EXPERTS = 19                  
+INITIAL_EXPERTS = 16                  
 
 # Paths to pre‑trained models (output from training comparison)
 PRETRAINED_BASELINE = "/kaggle/working/deepseekmoe_dynamic_routing_algorithms/checkpoints/baseline/final"
