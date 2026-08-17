@@ -6,7 +6,7 @@ from transformers.utils import logging
 from transformers.configuration_utils import PretrainedConfig
 
 # Global DYNMoE constants
-ADAPTIVE_AUDIT_STEPS = 100
+ADAPTIVE_AUDIT_STEPS = 10         # for testing, set to 100
 MAX_ROUTED_EXPERTS = 32
 DYNMOE_THRESHOLD_INIT = -0.05
 INITIAL_EXPERTS = 16

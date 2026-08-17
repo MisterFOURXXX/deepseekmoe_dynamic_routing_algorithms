@@ -1,6 +1,6 @@
 # Enhancing DeepSeek Architecture-Based Chatbots Using Dynamic Routing Algorithms
 
-This repository contains the official implementation of "Enhancing DeepSeek Architecture-Based Chatbots Using Dynamic Routing Algorithms". We integrate DYNMoE's dynamic Top-Any gating with the DeepSeekMoE architecture to overcome the computational inefficiencies of fixed Top-K routing, enabling adaptive expert activation based on token complexity.
+This repository contains the official implementation of the research paper "Enhancing DeepSeek Architecture-Based Chatbots Using Dynamic Routing Algorithms". We integrate DYNMoE's dynamic Top-Any gating with the DeepSeekMoE architecture to overcome the computational inefficiencies of fixed Top-K routing, enabling adaptive expert activation based on token complexity.
 
 The Mixture-of-Experts (MoE) architecture has become fundamental for scaling large language models (LLMs), with DeepSeekMoE achieving expert specialization through fine-grained segmentation and shared expert isolation. However, the reliance on fixed Top-K routing causes persistent load imbalance and computational inefficiency—simple tokens waste resources through over-activation while complex tokens lack sufficient capacity.
 
@@ -92,7 +92,7 @@ cd ./deepseekmoe_dynamic_routing_algorithms
 pip install -e .
 ```
 
-Note : If there is errors in import modules in the repositories, please use the command below.
+Note : If there is errors in import modules in the repositories during experiment, please use the command below.
 
 ```bash
 pip install -e ./deepseekmoe_dynamic_routing_algorithms
