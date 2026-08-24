@@ -1,5 +1,20 @@
 import torch
+from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.config import (
+    DR_ADAPTIVE_AUDIT_STEPS,         
+    DR_MAX_ROUTED_EXPERTS,      
+    DR_MIN_ROUTED_EXPERTS,          
+    DR_DYNMOE_THRESHOLD_INIT, 
+    DR_BIAS_UPDATE_RATE,   
+)
 
+from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.config import (
+    DYN_ADAPTIVE_AUDIT_STEPS,
+    DYN_MAX_ROUTED_EXPERTS,
+    DYN_DYNMOE_THRESHOLD_INIT,
+    DYN_INITIAL_EXPERTS
+)
+
+# Training hyperparameters
 MAX_SEQ_LEN = 256
 PER_DEVICE_BATCH = 8
 GRAD_ACCUM = 8
@@ -12,17 +27,17 @@ EARLY_STOPPING_THRESHOLD = 0.001
 world_size = torch.cuda.device_count()
 
 # DeepSeek DYNMoE Configs
-ADAPTIVE_AUDIT_STEPS = 10         # for testing, set to 100
-MAX_ROUTED_EXPERTS   = 8
-MIN_ROUTED_EXPERTS   = 2
-DYNMOE_THRESHOLD_INIT = -0.05 
-BIAS_UPDATE_RATE   = 0.0005   
+ADAPTIVE_AUDIT_STEPS = DR_ADAPTIVE_AUDIT_STEPS         # for testing, set to 100
+MAX_ROUTED_EXPERTS   = DR_MAX_ROUTED_EXPERTS
+MIN_ROUTED_EXPERTS   = DR_MIN_ROUTED_EXPERTS
+DYNMOE_THRESHOLD_INIT = DR_DYNMOE_THRESHOLD_INIT
+BIAS_UPDATE_RATE   = DR_BIAS_UPDATE_RATE
 
 #  DYNMoE CONFIGS 
-ADAPTIVE_AUDIT_STEPS = 10         # for testing, set to 100
-MAX_ROUTED_EXPERTS = 32              
-DYNMOE_THRESHOLD_INIT = -0.05
-INITIAL_EXPERTS = 16             
+ADAPTIVE_AUDIT_STEPS = DYN_ADAPTIVE_AUDIT_STEPS         # for testing, set to 100
+MAX_ROUTED_EXPERTS = DYN_MAX_ROUTED_EXPERTS              
+DYNMOE_THRESHOLD_INIT = DYN_DYNMOE_THRESHOLD_INIT
+INITIAL_EXPERTS = DYN_INITIAL_EXPERTS             
 
 # Paths to pre‑trained models (output from training comparison)
 OUTPUT_BASELINE = "/kaggle/working/deepseekmoe_dynamic_routing_algorithms/checkpoints/baseline"

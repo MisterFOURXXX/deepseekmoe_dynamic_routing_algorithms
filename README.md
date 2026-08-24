@@ -127,8 +127,6 @@ python3 preprocessing.py
 
 **Step 6: Configure Model Training, Fine Tuning, and Evaluation Paths**
 
-**Step 6.1: Configure Training Paths**
-
 Update the output paths in `source/training_utils/config.py`:
 
 ```python
@@ -137,30 +135,7 @@ OUTPUT_DYNMOE_BASE = "./deepseekmoe_dynamic_routing_algorithms/checkpoints/dynmo
 OUTPUT_DEEPSEEK_DYNMOE = "./deepseekmoe_dynamic_routing_algorithms/checkpoints/dynmoe_routing"
 ```
 
-**Step 6.2: Configure Fine-Tuning Paths**
-
-Update the loading and output paths in `source/fine_tuning_utils/config.py`:
-
-```python
-PRETRAINED_BASELINE = "./deepseekmoe_dynamic_routing_algorithms/checkpoints/baseline/final"
-OUTPUT_FT_BASELINE = "/kaggle/working/deepseekmoe_dynamic_routing_algorithms/checkpoints/baseline-ft"
-
-PRETRAINED_DYNMOE_BASE = "./deepseekmoe_dynamic_routing_algorithms/checkpoints/dynmoe_baseline/final"
-OUTPUT_FT_DYNMOE_BASE = "./deepseekmoe_dynamic_routing_algorithms/checkpoints/dynmoe_baseline-ft"
-
-PRETRAINED_DYNMOE_ROUTING = "./deepseekmoe_dynamic_routing_algorithms/checkpoints/dynmoe_routing/final"
-OUTPUT_FT_DYNMOE_ROUTING = "./deepseekmoe_dynamic_routing_algorithms/checkpoints/dynmoe_routing-ft"
-```
-
-**Step 6.3: Configure Evaluation Paths**
-
-Update the model paths in `source/evaluation/config.py`:
-
-```python
-OUTPUT_FT_BASELINE = "./deepseekmoe_dynamic_routing_algorithms/checkpoints/baseline-ft/final"
-OUTPUT_FT_DYNMOE_BASE = "./deepseekmoe_dynamic_routing_algorithms/checkpoints/dynmoe_baseline-ft/final"
-OUTPUT_FT_DYNMOE_ROUTING = "./deepseekmoe_dynamic_routing_algorithms/checkpoints/dynmoe_routing-ft/final"
-```
+The repository will automatically config all training, fine-tuning, and evaluation paths for all models.
 
 ---
 

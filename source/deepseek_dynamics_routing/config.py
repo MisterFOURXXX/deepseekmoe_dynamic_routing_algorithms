@@ -7,7 +7,7 @@ from transformers.configuration_utils import PretrainedConfig
 ADAPTIVE_AUDIT_STEPS = 10         # for testing, set to 100
 MAX_ROUTED_EXPERTS   = 8
 MIN_ROUTED_EXPERTS   = 2
-DYNMOE_THRESHOLD_INIT = 0.01
+DYNMOE_THRESHOLD_INIT = -0.005
 BIAS_UPDATE_RATE   = 0.0005   
 
 logger = logging.get_logger(__name__)

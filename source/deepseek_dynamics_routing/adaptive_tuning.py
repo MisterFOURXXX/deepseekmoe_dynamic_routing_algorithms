@@ -52,13 +52,12 @@ class AdaptiveExpertTuningCallback(TrainerCallback):
 
         # If anything was resized then rebuild optimizer from scratch
         if resized and self.trainer is not None:
-            print("[DYNMoE] Expert pool resized – rebuilding optimizer …")
             if self.trainer.optimizer is not None:
                 del self.trainer.optimizer
                 self.trainer.optimizer = None
             gc.collect()
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+            torch.cuda.empty_cache()
 
             # Re-create optimizer with the new parameter list
             self.trainer.create_optimizer()
+        print("[DYNMoE] Expert pool resized – rebuilding optimizer …")
