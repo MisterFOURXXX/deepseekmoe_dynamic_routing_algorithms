@@ -22,12 +22,12 @@ We address these limitations by integrating DYNMoE's dynamic routing algorithm w
 ```text
 deepseekmoe_dynamic_routing_algorithms/
 ├── checkpoints/                          # Saved models (created during runs)
-├── dataset/                              # MultiWOZ dataset (place .zip here)
+├── dataset/                              # MultiWOZ dataset (place during setup)
 │   └── Info.txt
 ├── notebooks/                            # Jupyter notebooks for experiments
-│   ├── 01_training_comparison.ipynb      # Pre‑training all three architectures
-│   ├── 02_fine_tuning_comparison.ipynb   # Fine‑tuning from pre‑trained checkpoints
-│   └── 03_evaluation_comparison.ipynb    # Evaluation and comparison
+│   ├── 01_training_comparison.ipynb      # Training comparison all model architectures
+│   ├── 02_fine_tuning_comparison.ipynb   # Fine‑tuning from pre‑trained checkpoints comparison all three architectures
+│   └── 03_evaluation_comparison.ipynb    # Evaluation and comparison all model architectures
 ├── source/
 │   ├── data_preprocessing/               # Dataset loading and preprocessing
 │   │   ├── config.py
@@ -35,7 +35,7 @@ deepseekmoe_dynamic_routing_algorithms/
 │   ├── deepseek_baseline/                # Original DeepSeekMoE (fixed Top‑K)
 │   │   ├── config.py
 │   │   └── model.py
-│   ├── DYNMoE_baseline/                  # Pure DYNMoE implementation (Phi‑2 based)
+│   ├── DYNMoE_baseline/                  # Pure DYNMoE implementation (Phi‑2 based with DYNMoE)
 │   │   ├── adaptive_tuning.py
 │   │   ├── config.py
 │   │   └── model.py
@@ -51,11 +51,11 @@ deepseekmoe_dynamic_routing_algorithms/
 │   ├── fine_tuning_utils/                # Fine‑tuning utilities
 │   │   ├── config.py
 │   │   ├── fine_tuning_runner.py
-│   │   ├── model_loading.py
+│   │   ├── model_loading.py              # Auto‑detect and load model from checkpoint
 │   │   ├── monitoring.py
 │   │   ├── save_model.py
 │   │   └── summarization.py
-│   ├── training_utils/                   # Pre‑training utilities
+│   ├── training_utils/                   # Training utilities
 │   │   ├── config.py
 │   │   ├── monitoring.py
 │   │   ├── save_model.py
@@ -149,9 +149,9 @@ All experiments are organized as Jupyter notebooks in the `./deepseekmoe_dynamic
 
 Trains all three models **from scratch** on the MultiWOZ 2.3 dataset:
 
-- **Baseline**: DeepSeekMoE with fixed Top‑K (K=2)
-- **DYNMoE Baseline**: Pure DYNMoE (Phi‑2 architecture) with Top‑Any gating
-- **Prototype**: Our integrated DeepSeekMoE + DYNMoE routing
+- **DeepSeekMoE Baseline**: DeepSeekMoE with fixed Top‑K (K=2)
+- **DYNMoE Baseline**: DYNMoE (Phi‑2 architecture) with Top‑Any gating, following "Dynamic Mixture of Experts: An Auto-Tuning Approach for Efficient Transformer Models" paper
+- **Prototype**: Our integrated DeepSeekMoE with DYNMoE routing
 
 **Outputs:** Checkpoints saved in `checkpoints/baseline/`, `checkpoints/dynmoe_baseline/`, and `checkpoints/dynmoe_routing/`.
 
