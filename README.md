@@ -82,6 +82,7 @@ git clone https://github.com/yourusername/deepseekmoe_dynamic_routing_algorithms
 
 ```bash
 cd ./deepseekmoe_dynamic_routing_algorithms
+cd /kaggle/working/deepseekmoe_dynamic_routing_algorithms
 bash setup.sh
 ```
 
@@ -96,6 +97,7 @@ Note : If there is errors in import modules in the repositories during experimen
 
 ```bash
 pip install -e ./deepseekmoe_dynamic_routing_algorithms
+pip install -e /kaggle/working/deepseekmoe_dynamic_routing_algorithms
 ```
 
 **Step 4: Restart Python Kernel**
@@ -122,6 +124,7 @@ DEFAULT_EVAL_PATH = "./deepseekmoe_dynamic_routing_algorithms/dataset/eval_seque
 
 ```bash
 cd ./deepseekmoe_dynamic_routing_algorithms/source/data_preprocessing
+cd /kaggle/working/deepseekmoe_dynamic_routing_algorithms/source/data_preprocessing
 python3 preprocessing.py
 ```
 

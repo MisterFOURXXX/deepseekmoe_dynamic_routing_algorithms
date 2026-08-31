@@ -1,4 +1,4 @@
-from .config import (
+from config import (
     EVAL_PARAMS,
     OUTPUT_FT_BASELINE,
     OUTPUT_FT_DYNMOE_BASE,

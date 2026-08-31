@@ -1,4 +1,4 @@
-from .config import (
+from config import (
     OUTPUT_BASELINE,
     OUTPUT_DYNMOE_BASE,
     OUTPUT_DEEPSEEK_DYNMOE
