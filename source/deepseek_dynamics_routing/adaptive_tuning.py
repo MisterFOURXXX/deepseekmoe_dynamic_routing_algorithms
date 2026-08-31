@@ -5,9 +5,7 @@ import torch
 import math
 from transformers import TrainerCallback
 
-from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.config import (
-    ADAPTIVE_AUDIT_STEPS 
-)
+from .config import ADAPTIVE_AUDIT_STEPS
 
 # AdaptiveExpertTuningCallback: Trainer callback for expert pool resizing
 class AdaptiveExpertTuningCallback(TrainerCallback):

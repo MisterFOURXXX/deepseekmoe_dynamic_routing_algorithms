@@ -36,9 +36,6 @@ from transformers.utils import (
 )
 from transformers.utils.import_utils import is_torch_fx_available
 
-from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.config import DeepseekConfig
-from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.adaptive_tuning import AdaptiveExpertTuningCallback
-
 if is_flash_attn_2_available():
     from flash_attn import flash_attn_func, flash_attn_varlen_func
     from flash_attn.bert_padding import index_first_axis, pad_input, unpad_input
@@ -57,12 +54,15 @@ if is_torch_fx_available():
 # Test if flash attention is available through PyTorch
 from torch.backends.cuda import flash_sdp_enabled, mem_efficient_sdp_enabled
 
-from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.config import (
-    ADAPTIVE_AUDIT_STEPS,         
-    MAX_ROUTED_EXPERTS,      
-    MIN_ROUTED_EXPERTS,          
-    DYNMOE_THRESHOLD_INIT, 
-    BIAS_UPDATE_RATE,   
+# Relative imports
+from .config import DeepseekConfig
+from .adaptive_tuning import AdaptiveExpertTuningCallback
+from .config import (
+    ADAPTIVE_AUDIT_STEPS,
+    MAX_ROUTED_EXPERTS,
+    MIN_ROUTED_EXPERTS,
+    DYNMOE_THRESHOLD_INIT,
+    BIAS_UPDATE_RATE,
 )
 
 """

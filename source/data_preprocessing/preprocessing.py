@@ -8,7 +8,8 @@ import contractions
 import dateparser
 from word2number import w2n
 from sklearn.model_selection import train_test_split
-from source.data_preprocessing.config import (
+
+from .config import (
     DEFAULT_EVAL_PATH,
     DEFAULT_FINE_PATH,
     DEFAULT_TRAIN_PATH,

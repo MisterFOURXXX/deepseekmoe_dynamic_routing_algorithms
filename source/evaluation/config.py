@@ -1,4 +1,4 @@
-from deepseekmoe_dynamic_routing_algorithms.source.fine_tuning_utils.config import (
+from ..fine_tuning_utils.config import (
     OUTPUT_FT_BASELINE,
     OUTPUT_FT_DYNMOE_BASE,
     OUTPUT_FT_DYNMOE_ROUTING

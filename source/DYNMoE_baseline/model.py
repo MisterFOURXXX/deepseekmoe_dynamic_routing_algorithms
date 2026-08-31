@@ -37,9 +37,6 @@ from transformers.utils import (
 from transformers import GenerationConfig
 from transformers.utils.import_utils import is_torch_fx_available
 
-from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.config import DynMoEConfig
-from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.adaptive_tuning import AdaptiveExpertTuningCallback
-
 # Flash Attention (optional, conditionally imported)
 if is_flash_attn_2_available():
     from flash_attn import flash_attn_func, flash_attn_varlen_func
@@ -71,11 +68,14 @@ from typing import List, Optional, Tuple, Union, Dict, Any
 # Test if flash attention is available through PyTorch
 from torch.backends.cuda import flash_sdp_enabled, mem_efficient_sdp_enabled
 
-from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.config import (
+# Relative imports
+from .config import DynMoEConfig
+from .adaptive_tuning import AdaptiveExpertTuningCallback
+from .config import (
     ADAPTIVE_AUDIT_STEPS,
     MAX_ROUTED_EXPERTS,
     DYNMOE_THRESHOLD_INIT,
-    INITIAL_EXPERTS
+    INITIAL_EXPERTS,
 )
 
 # RMSNorm (Phi‑2)
