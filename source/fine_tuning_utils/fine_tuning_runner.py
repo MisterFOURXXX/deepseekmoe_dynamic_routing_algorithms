@@ -7,24 +7,24 @@ import random
 from transformers import AutoTokenizer, Trainer, TrainingArguments, DataCollatorForLanguageModeling
 from datasets import Dataset, DatasetDict
 
-from ..deepseek_baseline.config import DeepseekConfig as BaselineConfig
-from ..deepseek_baseline.model import DeepseekForCausalLM as BaselineModel
+from deepseek_baseline.config import DeepseekConfig as BaselineConfig
+from deepseek_baseline.model import DeepseekForCausalLM as BaselineModel
 
-from ..DYNMoE_baseline.config import DynMoEConfig as DYNMoEBaseConfig
-from ..DYNMoE_baseline.model import DynMoEForCausalLM as DYNMoEBaseModel
-from ..DYNMoE_baseline.adaptive_tuning import AdaptiveExpertTuningCallback as DYNMoEBaseCallback
-from ..DYNMoE_baseline.adaptive_tuning import ADAPTIVE_AUDIT_STEPS as DYNMoE_BASE_ADAPTIVE_AUDIT_STEPS
+from DYNMoE_baseline.config import DynMoEConfig as DYNMoEBaseConfig
+from DYNMoE_baseline.model import DynMoEForCausalLM as DYNMoEBaseModel
+from DYNMoE_baseline.adaptive_tuning import AdaptiveExpertTuningCallback as DYNMoEBaseCallback
+from DYNMoE_baseline.adaptive_tuning import ADAPTIVE_AUDIT_STEPS as DYNMoE_BASE_ADAPTIVE_AUDIT_STEPS
 
-from ..deepseek_dynamics_routing.config import DeepseekConfig as DynmoeConfig
-from ..deepseek_dynamics_routing.model import DeepseekForCausalLM as DynmoeModel
-from ..deepseek_dynamics_routing.adaptive_tuning import AdaptiveExpertTuningCallback as DynmoeRoutingCallback
-from ..deepseek_dynamics_routing.adaptive_tuning import ADAPTIVE_AUDIT_STEPS as DYNMOE_ROUTING_ADAPTIVE_AUDIT_STEPS
+from deepseek_dynamics_routing.config import DeepseekConfig as DynmoeConfig
+from deepseek_dynamics_routing.model import DeepseekForCausalLM as DynmoeModel
+from deepseek_dynamics_routing.adaptive_tuning import AdaptiveExpertTuningCallback as DynmoeRoutingCallback
+from deepseek_dynamics_routing.adaptive_tuning import ADAPTIVE_AUDIT_STEPS as DYNMOE_ROUTING_ADAPTIVE_AUDIT_STEPS
 
-from .monitoring import ResourceMonitorCallback, MoEMetricsCallback
-from .save_model import save_finetuned_model
-from .summarization import print_finetuning_summary
-from .model_loading import load_model_and_tokenizer
-from .config import (
+from monitoring import ResourceMonitorCallback, MoEMetricsCallback
+from save_model import save_finetuned_model
+from summarization import print_finetuning_summary
+from model_loading import load_model_and_tokenizer
+from config import (
     MAX_SEQ_LEN,
     PER_DEVICE_BATCH,
     GRAD_ACCUM,
@@ -35,7 +35,7 @@ from .config import (
     world_size
 )
 
-from ..memory_utils import cleanup_trainer, clear_cached_data
+from memory_utils import cleanup_trainer, clear_cached_data
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)

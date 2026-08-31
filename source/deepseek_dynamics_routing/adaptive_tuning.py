@@ -5,7 +5,9 @@ import torch
 import math
 from transformers import TrainerCallback
 
-from .config import ADAPTIVE_AUDIT_STEPS
+from config import (
+    ADAPTIVE_AUDIT_STEPS 
+)
 
 # AdaptiveExpertTuningCallback: Trainer callback for expert pool resizing
 class AdaptiveExpertTuningCallback(TrainerCallback):

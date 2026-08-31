@@ -36,3 +36,4 @@ tqdm
 transformers==4.44.2
 wheel
 word2number
+scikit-learn

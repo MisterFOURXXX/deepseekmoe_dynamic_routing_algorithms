@@ -5,9 +5,10 @@ import torch
 import pandas as pd
 from transformers import AutoTokenizer
 
-from .evaluation import evaluate_model
-from .model_loading import load_model_and_tokenizer
-from .config import EVAL_PARAMS
+# Import evaluation and model loading utilities
+from evaluation import evaluate_model as evaluate_model_func
+from model_loading import load_model_and_tokenizer
+from config import EVAL_PARAMS
 
 # Device
 torch.cuda.empty_cache()

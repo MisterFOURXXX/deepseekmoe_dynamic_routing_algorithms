@@ -55,14 +55,14 @@ if is_torch_fx_available():
 from torch.backends.cuda import flash_sdp_enabled, mem_efficient_sdp_enabled
 
 # Relative imports
-from .config import DeepseekConfig
-from .adaptive_tuning import AdaptiveExpertTuningCallback
-from .config import (
-    ADAPTIVE_AUDIT_STEPS,
-    MAX_ROUTED_EXPERTS,
-    MIN_ROUTED_EXPERTS,
-    DYNMOE_THRESHOLD_INIT,
-    BIAS_UPDATE_RATE,
+from adaptive_tuning import AdaptiveExpertTuningCallback
+from config import (
+    DeepseekConfig,
+    ADAPTIVE_AUDIT_STEPS,         
+    MAX_ROUTED_EXPERTS,      
+    MIN_ROUTED_EXPERTS,          
+    DYNMOE_THRESHOLD_INIT, 
+    BIAS_UPDATE_RATE,   
 )
 
 """

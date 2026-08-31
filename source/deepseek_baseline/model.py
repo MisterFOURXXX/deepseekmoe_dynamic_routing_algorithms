@@ -36,8 +36,6 @@ from transformers.utils import (
 )
 from transformers.utils.import_utils import is_torch_fx_available
 
-from .config import DeepseekConfig
-
 if is_flash_attn_2_available():
     from flash_attn import flash_attn_func, flash_attn_varlen_func
     from flash_attn.bert_padding import index_first_axis, pad_input, unpad_input
@@ -49,6 +47,8 @@ if is_torch_fx_available():
 
 # Test if flash attention is available through PyTorch
 from torch.backends.cuda import flash_sdp_enabled, mem_efficient_sdp_enabled
+
+from config import DeepseekConfig
 
 """
 coding=utf-8

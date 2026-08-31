@@ -69,13 +69,13 @@ from typing import List, Optional, Tuple, Union, Dict, Any
 from torch.backends.cuda import flash_sdp_enabled, mem_efficient_sdp_enabled
 
 # Relative imports
-from .config import DynMoEConfig
-from .adaptive_tuning import AdaptiveExpertTuningCallback
-from .config import (
+from adaptive_tuning import AdaptiveExpertTuningCallback
+from config import (
+    DynMoEConfig,
     ADAPTIVE_AUDIT_STEPS,
     MAX_ROUTED_EXPERTS,
     DYNMOE_THRESHOLD_INIT,
-    INITIAL_EXPERTS,
+    INITIAL_EXPERTS
 )
 
 # RMSNorm (Phi‑2)

@@ -2,7 +2,7 @@ from setuptools import find_packages, setup
 
 setup(
     name="deepseekmoe_dynamic_routing_algorithms",
-    version="1.0.0",
+    version="2.1.0",
     packages=find_packages(),
     url="https://github.com/MisterFOURXXX/deepseekmoe_dynamic_routing_algorithms",
     license="Apache 2.0",
