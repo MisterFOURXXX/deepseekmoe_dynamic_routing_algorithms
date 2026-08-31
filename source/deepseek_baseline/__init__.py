@@ -1,2 +1,2 @@
 from .config import DeepseekConfig
-from .model import DeepseekForCausalLM, DeepseekModel
+from .model import DeepseekForCausalLM
