@@ -48,7 +48,7 @@ if is_torch_fx_available():
 # Test if flash attention is available through PyTorch
 from torch.backends.cuda import flash_sdp_enabled, mem_efficient_sdp_enabled
 
-from config import DeepseekConfig
+from .config import DeepseekConfig
 
 """
 coding=utf-8
