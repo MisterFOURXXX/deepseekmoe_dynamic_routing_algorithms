@@ -2,9 +2,9 @@ import os
 import json
 from transformers import AutoTokenizer
 
-from deepseek_baseline.model import DeepseekForCausalLM as BaselineModel
-from deepseek_dynamics_routing.model import DeepseekForCausalLM as RoutingModel
-from DYNMoE_baseline.model import DynMoEForCausalLM as DynMoEModel
+from deepseekmoe_dynamic_routing_algorithms.source.deepseek_baseline.model import DeepseekForCausalLM as BaselineModel
+from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.model import DeepseekForCausalLM as RoutingModel
+from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.model import DynMoEForCausalLM as DynMoEModel
 
 
 def load_model_and_tokenizer(model_path):

@@ -9,14 +9,18 @@ from torch.utils.data import DataLoader
 from transformers import TrainerCallback
 from torch.utils.flop_counter import FlopCounterMode
 
-from config import (
+from deepseekmoe_dynamic_routing_algorithms.source.fine_tuning_utils.config import (
     MAX_SEQ_LEN,
     PER_DEVICE_BATCH,
     GRAD_ACCUM,
+    LEARNING_RATE,
+    NUM_EPOCHS_FT,
+    WARMUP_STEPS,
+    WEIGHT_DECAY,
     EARLY_STOPPING_PATIENCE,
     EARLY_STOPPING_THRESHOLD,
     MAX_ROUTED_EXPERTS,
-    world_size,
+    world_size
 )
 
 

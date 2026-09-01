@@ -1,18 +1,20 @@
 import torch
-from deepseek_dynamics_routing.config import (
-    ADAPTIVE_AUDIT_STEPS as DR_ADAPTIVE_AUDIT_STEPS,
-    MAX_ROUTED_EXPERTS as DR_MAX_ROUTED_EXPERTS,
-    MIN_ROUTED_EXPERTS as DR_MIN_ROUTED_EXPERTS,
-    DYNMOE_THRESHOLD_INIT as DR_DYNMOE_THRESHOLD_INIT,
-    BIAS_UPDATE_RATE as DR_BIAS_UPDATE_RATE,
+from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.config import (
+    DR_ADAPTIVE_AUDIT_STEPS,         
+    DR_MAX_ROUTED_EXPERTS,      
+    DR_MIN_ROUTED_EXPERTS,          
+    DR_DYNMOE_THRESHOLD_INIT, 
+    DR_BIAS_UPDATE_RATE,   
 )
-from DYNMoE_baseline.config import (
-    ADAPTIVE_AUDIT_STEPS as DYN_ADAPTIVE_AUDIT_STEPS,
-    MAX_ROUTED_EXPERTS as DYN_MAX_ROUTED_EXPERTS,
-    DYNMOE_THRESHOLD_INIT as DYN_DYNMOE_THRESHOLD_INIT,
-    INITIAL_EXPERTS as DYN_INITIAL_EXPERTS,
+
+from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.config import (
+    DYN_ADAPTIVE_AUDIT_STEPS,
+    DYN_MAX_ROUTED_EXPERTS,
+    DYN_DYNMOE_THRESHOLD_INIT,
+    DYN_INITIAL_EXPERTS
 )
-from training_utils.config import (
+
+from deepseekmoe_dynamic_routing_algorithms.source.training_utils.config import (
     OUTPUT_BASELINE,
     OUTPUT_DYNMOE_BASE,
     OUTPUT_DEEPSEEK_DYNMOE

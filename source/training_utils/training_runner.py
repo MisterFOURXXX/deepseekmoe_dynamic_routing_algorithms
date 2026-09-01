@@ -6,29 +6,32 @@ import random
 from transformers import AutoTokenizer, Trainer, TrainingArguments, DataCollatorForLanguageModeling
 from datasets import load_dataset
 
-from deepseek_baseline.config import DeepseekConfig as BaselineConfig
-from deepseek_baseline.model import DeepseekForCausalLM as BaselineModel
+# Model imports (assumes repo root is on sys.path)
+from deepseekmoe_dynamic_routing_algorithms.source.deepseek_baseline.config import DeepseekConfig as BaselineConfig
+from deepseekmoe_dynamic_routing_algorithms.source.deepseek_baseline.model import DeepseekForCausalLM as BaselineModel
 
-from DYNMoE_baseline.config import DynMoEConfig as DYNMoEBaseConfig
-from DYNMoE_baseline.model import DynMoEForCausalLM as DYNMoEBaseModel
-from DYNMoE_baseline.adaptive_tuning import AdaptiveExpertTuningCallback as DYNMoEBaseCallback
-from DYNMoE_baseline.adaptive_tuning import ADAPTIVE_AUDIT_STEPS as DYNMoE_BASE_ADAPTIVE_AUDIT_STEPS
+from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.config import DynMoEConfig as DYNMoEBaseConfig
+from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.model import DynMoEForCausalLM as DYNMoEBaseModel
+from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.adaptive_tuning import AdaptiveExpertTuningCallback as DYNMoEBaseCallback
+from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.adaptive_tuning import ADAPTIVE_AUDIT_STEPS as DYNMoE_BASE_ADAPTIVE_AUDIT_STEPS
 
-from deepseek_dynamics_routing.config import DeepseekConfig as DynmoeConfig
-from deepseek_dynamics_routing.model import DeepseekForCausalLM as DynmoeModel
-from deepseek_dynamics_routing.adaptive_tuning import AdaptiveExpertTuningCallback as DynmoeRoutingCallback
-from deepseek_dynamics_routing.adaptive_tuning import ADAPTIVE_AUDIT_STEPS as DYNMOE_ROUTING_ADAPTIVE_AUDIT_STEPS
+from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.config import DeepseekConfig as DynmoeConfig
+from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.model import DeepseekForCausalLM as DynmoeModel
+from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.adaptive_tuning import AdaptiveExpertTuningCallback as DynmoeRoutingCallback
+from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.adaptive_tuning import ADAPTIVE_AUDIT_STEPS as DYNMOE_ROUTING_ADAPTIVE_AUDIT_STEPS
 
-from monitoring import ResourceMonitorCallback, MoEMetricsCallback
-from save_model import save_model_and_tokenizer
-from summarization import print_training_summary
-from config import (
+from deepseekmoe_dynamic_routing_algorithms.source.training_utils.monitoring import ResourceMonitorCallback, MoEMetricsCallback
+from deepseekmoe_dynamic_routing_algorithms.source.training_utils.save_model import save_model_and_tokenizer
+from deepseekmoe_dynamic_routing_algorithms.source.training_utils.summarization import print_training_summary
+
+from deepseekmoe_dynamic_routing_algorithms.source.training_utils.config import (
     MAX_SEQ_LEN, PER_DEVICE_BATCH, GRAD_ACCUM, LEARNING_RATE,
     NUM_EPOCHS, WARMUP_STEPS, WEIGHT_DECAY,
     EARLY_STOPPING_PATIENCE, EARLY_STOPPING_THRESHOLD, world_size
 )
 
-from memory_utils import cleanup_trainer, clear_cached_data
+## Import memory utilities
+from deepseekmoe_dynamic_routing_algorithms.source.memory_utils import cleanup_trainer, clear_cached_data
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)

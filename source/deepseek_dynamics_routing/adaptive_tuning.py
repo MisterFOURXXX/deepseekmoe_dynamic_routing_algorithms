@@ -5,7 +5,7 @@ import torch
 import math
 from transformers import TrainerCallback
 
-from config import (
+from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.config import (
     ADAPTIVE_AUDIT_STEPS 
 )
 
