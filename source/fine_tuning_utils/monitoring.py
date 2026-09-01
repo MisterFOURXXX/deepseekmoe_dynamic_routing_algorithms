@@ -19,9 +19,11 @@ from deepseekmoe_dynamic_routing_algorithms.source.fine_tuning_utils.config impo
     WEIGHT_DECAY,
     EARLY_STOPPING_PATIENCE,
     EARLY_STOPPING_THRESHOLD,
-    MAX_ROUTED_EXPERTS,
     world_size
 )
+
+from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.config import MAX_ROUTED_EXPERTS as DYN_MAX_ROUTED_EXPERTS
+from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.config import MAX_ROUTED_EXPERTS as DR_MAX_ROUTED_EXPERTS
 
 
 class ResourceMonitorCallback(TrainerCallback):

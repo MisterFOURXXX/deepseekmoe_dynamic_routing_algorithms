@@ -17,7 +17,6 @@ from deepseekmoe_dynamic_routing_algorithms.source.training_utils.config import 
     GRAD_ACCUM,
     EARLY_STOPPING_PATIENCE,
     EARLY_STOPPING_THRESHOLD,
-    #MAX_ROUTED_EXPERTS,
     world_size,
 )
 
