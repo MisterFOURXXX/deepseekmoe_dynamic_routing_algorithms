@@ -83,7 +83,7 @@ git clone https://github.com/yourusername/deepseekmoe_dynamic_routing_algorithms
 At `REPO_ROOT` variable change to your project location.
 
 ```bash
-REPO_ROOT="/content/deepseekmoe_dynamic_routing_algorithms"
+REPO_ROOT="./deepseekmoe_dynamic_routing_algorithms"
 ```
 
 **Step 3: Setup System Environment and Install Python Packages**
