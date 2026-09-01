@@ -78,7 +78,15 @@ deepseekmoe_dynamic_routing_algorithms/
 git clone https://github.com/yourusername/deepseekmoe_dynamic_routing_algorithms.git
 ```
 
-**Step 2: Setup System Environment and Install Python Packages**
+**Step 2: Change Download and Packages Configure Paths**
+
+At `REPO_ROOT` variable change to your project location.
+
+```bash
+REPO_ROOT="/content/deepseekmoe_dynamic_routing_algorithms"
+```
+
+**Step 3: Setup System Environment and Install Python Packages**
 
 ```bash
 cd ./deepseekmoe_dynamic_routing_algorithms
@@ -86,31 +94,9 @@ cd /kaggle/working/deepseekmoe_dynamic_routing_algorithms
 bash setup.sh
 ```
 
-**Step 3: Install the Packages and Modules in Repository**
+**Step 4: Execute Data Preprocessing**
 
-```bash
-cd ./deepseekmoe_dynamic_routing_algorithms
-pip install -e .
-```
-
-Note : If there is errors in import modules in the repositories during experiment, please use the command below.
-
-```bash
-pip install -e ./deepseekmoe_dynamic_routing_algorithms
-pip install -e /kaggle/working/deepseekmoe_dynamic_routing_algorithms
-```
-
-**Step 4: Restart Python Kernel**
-
-After installation, restart your Python kernel to ensure all packages are properly loaded.
-
-```bash
-exit 0
-```
-
-**Step 5: Execute Data Preprocessing**
-
-**Step 5.1: Configure Paths**
+**Step 4.1: Configure Paths**
 
 Update the paths for data preprocessing and to save dataset `./source/data_preprocessing/config.py`:
 ```python
@@ -120,7 +106,7 @@ DEFAULT_FINE_PATH = "./deepseekmoe_dynamic_routing_algorithms/dataset/fine_seque
 DEFAULT_EVAL_PATH = "./deepseekmoe_dynamic_routing_algorithms/dataset/eval_sequences.txt"
 ```
 
-**Step 5.2: Run Preprocessing**
+**Step 4.2: Run Preprocessing**
 
 ```bash
 cd ./deepseekmoe_dynamic_routing_algorithms/source/data_preprocessing
@@ -128,7 +114,7 @@ cd /kaggle/working/deepseekmoe_dynamic_routing_algorithms/source/data_preprocess
 python3 preprocessing.py
 ```
 
-**Step 6: Configure Model Training, Fine Tuning, and Evaluation Paths**
+**Step 5: Configure Model Training, Fine Tuning, and Evaluation Paths**
 
 Update the output paths in `source/training_utils/config.py`:
 

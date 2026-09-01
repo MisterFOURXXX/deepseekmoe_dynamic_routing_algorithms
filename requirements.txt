@@ -28,6 +28,7 @@ psutil
 pynvml
 pyspellchecker
 rouge-score
+tokenizers
 sentence-transformers==2.7.0
 sentencepiece
 setuptools

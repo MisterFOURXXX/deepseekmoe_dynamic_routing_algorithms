@@ -5,7 +5,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
 # Set repository root variable
-REPO_ROOT="/kaggle/working/deepseekmoe_dynamic_routing_algorithms"
+REPO_ROOT="/content/deepseekmoe_dynamic_routing_algorithms"
 
 #Navigating to Repository Root
 cd "$REPO_ROOT"
@@ -20,16 +20,16 @@ apt-get update -qq && apt-get install -y libaio-dev -qq
 # Python packages
 pip install -r requirements.txt
 
-cd /kaggle/working/deepseekmoe_dynamic_routing_algorithms
+cd "$REPO_ROOT"
 
 # Registering Package (pip install -e .)/ Linking Repository Paths (pip install -e .)
 # pip install -e .
-!pip install -e /kaggle/working/deepseekmoe_dynamic_routing_algorithms
+pip install -e "$REPO_ROOT"
 
 echo "Environment setup complete!"
 
 # Move into the dataset folder of your project
-cd /kaggle/working/deepseekmoe_dynamic_routing_algorithms/dataset
+cd "$REPO_ROOT/dataset"
 
 # Clone the MultiWOZ coreference repository
 git clone https://github.com/lexmen318/MultiWOZ-coref.git
