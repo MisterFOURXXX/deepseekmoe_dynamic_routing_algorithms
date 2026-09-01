@@ -3,7 +3,9 @@
 
 # PyTorch with CUDA 12.6 (install separately):
 # pip install torch==2.9.0 torchvision==0.24.0 torchaudio==2.9.0 --index-url https://download.pytorch.org/whl/cu126
-
+cache 
+purge
+jedi>=0.16
 accelerate==0.34.2
 attrdict
 contractions
@@ -28,12 +30,12 @@ psutil
 pynvml
 pyspellchecker
 rouge-score
-tokenizers
 sentence-transformers==2.7.0
 sentencepiece
 setuptools
 tensorboardX
 tqdm
+tokenizers<0.19.1
 transformers==4.44.2
 wheel
 word2number
