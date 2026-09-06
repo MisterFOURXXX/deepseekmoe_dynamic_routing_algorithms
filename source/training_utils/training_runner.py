@@ -20,10 +20,10 @@ from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.con
 from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.model import DeepseekForCausalLM as DynmoeModel
 from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.adaptive_tuning import AdaptiveExpertTuningCallback as DynmoeRoutingCallback
 from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.config import (
-    AUDIT_STEPS
-    PRUNE_THRESHOLD
-    MIN_ACTIVE_EXPERTS
-    BIAS_UPDATE_INTERVAL
+    AUDIT_STEPS,
+    PRUNE_THRESHOLD,
+    MIN_ACTIVE_EXPERTS,
+    BIAS_UPDATE_INTERVAL,
     CLEAR_CACHE_EVERY
 )
 

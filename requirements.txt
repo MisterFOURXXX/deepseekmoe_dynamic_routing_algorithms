@@ -3,40 +3,40 @@
 
 # PyTorch with CUDA 12.6 (install separately):
 # pip install torch==2.9.0 torchvision==0.24.0 torchaudio==2.9.0 --index-url https://download.pytorch.org/whl/cu126
-cache 
-purge
-jedi>=0.16
+cache==1.0.3
+purge==1.0
+jedi==0.19.2
 accelerate==0.34.2
-attrdict
-contractions
-CurrencyConverter
+attrdict==2.0.1
+contractions==0.1.73
+CurrencyConverter==0.18.21
 datasets==2.21.0
-dateparser
+dateparser==1.4.3
 deepspeed==0.15.0
-evaluate
-#flash-attn --no-build-isolation
-gensim
-GPUtil
-mpi4py
+evaluate==0.4.6
+# flash-attn --no-build-isolation
+gensim==4.4.0
+GPUtil==1.4.0
+mpi4py==4.1.2
 ninja==1.13.0
-nlpaug
+nlpaug==1.1.11
 numpy==1.26.4
-nvidia-ml-py3
+nvidia-ml-py3==7.352.0
 nvidia_smi
-packaging
+packaging==26.1
 peft==0.12.0
 protobuf==4.25.5
-psutil
-pynvml
-pyspellchecker
+psutil==5.9.5
+pynvml==13.0.1
+pyspellchecker==0.9.0
 rouge-score
 sentence-transformers==2.7.0
-sentencepiece
-setuptools
-tensorboardX
-tqdm
-tokenizers<0.19.1
+sentencepiece==0.2.1
+setuptools==81.0.0
+tensorboardX==2.6.5
+tqdm==4.67.3
+tokenizers==0.19.0
 transformers==4.44.2
-wheel
-word2number
-scikit-learn
+wheel==0.47.0
+word2number==1.1
+scikit-learn==1.6.1
