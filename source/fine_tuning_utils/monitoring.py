@@ -153,7 +153,7 @@ class MoEMetricsCallback(TrainerCallback):
             step_vios = []
             for layer_idx, counts in self.step_layer_counts.items():
                 total = counts.sum()
-                n_experts = len(counts)
+                n_experts = len(counts)          # counts is now always 1D
                 expected = total / n_experts if total > 0 else 0.0
                 if expected > 0:
                     vio = np.max(np.abs(counts - expected)) / (expected + 1e-12)
@@ -161,6 +161,7 @@ class MoEMetricsCallback(TrainerCallback):
                     vio = 0.0
                 step_vios.append(vio)
 
+                # Update biases for DYNMoE if the gate supports it
                 if layer_idx < len(self.gates) and hasattr(self.gates[layer_idx], 'update_biases'):
                     self.gates[layer_idx].update_biases(torch.from_numpy(counts).to(model.device))
 
@@ -190,6 +191,11 @@ class MoEMetricsCallback(TrainerCallback):
         moe_layers = self._get_moe_layers(unwrapped)
         num_moe_layers = len(moe_layers)
 
+        if num_moe_layers == 0:
+            print("[MoEMetricsCallback] No MoE layers found; skipping metrics.")
+            model.train()
+            return
+
         # Prepare validation hooks
         if self.is_dynmoe:
             layer_expert_counts = []
@@ -199,15 +205,20 @@ class MoEMetricsCallback(TrainerCallback):
                 arr = np.zeros(size, dtype=np.float64)
                 layer_expert_counts.append(arr)
                 def val_hook_fn(module, input, output):
-                    nonlocal arr   # <-- FIX: allows modification of arr
+                    nonlocal arr
+                    # Weight extraction 
                     if len(output) >= 2 and isinstance(output[1], torch.Tensor):
                         weights = output[1]
                     elif len(output) >= 1 and isinstance(output[0], torch.Tensor):
                         weights = output[0]
                     else:
                         return
-                    activated = (weights > 1e-8).float().sum(dim=0).detach().cpu().numpy()
-                    arr += activated
+                    # Sum over all dimensions EXCEPT the last (expert dimension)
+                    # This yields a 1D array of length `size` regardless of input rank.
+                    reduce_dims = tuple(range(weights.dim() - 1))
+                    activated = (weights > 1e-8).float()
+                    counts = activated.sum(dim=reduce_dims).detach().cpu().numpy()
+                    arr += counts
                 return val_hook_fn
             for idx, layer in enumerate(moe_layers):
                 gate = layer.mlp.gate
@@ -228,7 +239,7 @@ class MoEMetricsCallback(TrainerCallback):
                 hook = layer.mlp.gate.register_forward_hook(val_hook_fn)
                 val_hooks.append(hook)
 
-        # Evaluation loop
+        # Evaluation loop with FLOP counting
         from torch.utils.flop_counter import FlopCounterMode
         flop_counter = FlopCounterMode(unwrapped, display=False)
 
@@ -337,7 +348,7 @@ class MoEMetricsCallback(TrainerCallback):
 
         model.train()
 
-    # Helper methods
+    # Helper methods (unchanged)
     def _get_layer_list(self, model):
         if hasattr(model, 'model') and hasattr(model.model, 'layers'):
             return model.model.layers
@@ -376,6 +387,7 @@ class MoEMetricsCallback(TrainerCallback):
             print("[MoEMetricsCallback] No MoE layers found. No hooks attached.")
             return
 
+        # Detect DYNMoE by presence of DYNMoE‑specific attributes
         is_dynmoe = False
         for layer in moe_layers:
             gate = layer.mlp.gate
@@ -412,13 +424,23 @@ class MoEMetricsCallback(TrainerCallback):
             self.batch_counts += counts
 
     def _batch_hook_dynmoe(self, module, input, output, layer_idx):
+        """
+        Training hook for DYNMoE – CORRECTED: sum over all non‑expert dimensions.
+        Works for any rank (2D, 3D, etc.).
+        """
+        # Weight extraction: check second element first
         if len(output) >= 2 and isinstance(output[1], torch.Tensor):
             weights = output[1]
         elif len(output) >= 1 and isinstance(output[0], torch.Tensor):
             weights = output[0]
         else:
             return
-        counts = (weights > 1e-8).float().sum(dim=0).detach().cpu().numpy()
-        self.step_layer_counts[layer_idx] = self.step_layer_counts.get(
-            layer_idx, np.zeros_like(counts)
-        ) + counts
+
+        # Sum over all dimensions except the last (expert dimension)
+        reduce_dims = tuple(range(weights.dim() - 1))
+        counts = (weights > 1e-8).float().sum(dim=reduce_dims).detach().cpu().numpy()
+
+        if layer_idx not in self.step_layer_counts:
+            self.step_layer_counts[layer_idx] = counts
+        else:
+            self.step_layer_counts[layer_idx] += counts

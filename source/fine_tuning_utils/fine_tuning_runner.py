@@ -19,7 +19,13 @@ from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.adaptive_tuni
 from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.config import DeepseekConfig as DynmoeConfig
 from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.model import DeepseekForCausalLM as DynmoeModel
 from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.adaptive_tuning import AdaptiveExpertTuningCallback as DynmoeRoutingCallback
-from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.adaptive_tuning import ADAPTIVE_AUDIT_STEPS as DYNMOE_ROUTING_ADAPTIVE_AUDIT_STEPS
+from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.config import (
+    AUDIT_STEPS
+    PRUNE_THRESHOLD
+    MIN_ACTIVE_EXPERTS
+    BIAS_UPDATE_INTERVAL
+    CLEAR_CACHE_EVERY
+)
 
 from deepseekmoe_dynamic_routing_algorithms.source.fine_tuning_utils.monitoring import ResourceMonitorCallback, MoEMetricsCallback
 from deepseekmoe_dynamic_routing_algorithms.source.fine_tuning_utils.save_model import save_finetuned_model
@@ -193,7 +199,13 @@ def fine_tune_model(pretrained_path, output_dir,
         if "DYNMoE_baseline" in model.__class__.__name__:
             adaptive_callback = DYNMoEBaseCallback(audit_steps=DYNMoE_BASE_ADAPTIVE_AUDIT_STEPS)
         else:
-            adaptive_callback = DynmoeRoutingCallback(audit_steps=DYNMOE_ROUTING_ADAPTIVE_AUDIT_STEPS)
+            adaptive_callback = DynmoeRoutingCallback(
+                audit_steps = AUDIT_STEPS,
+                prune_threshold = PRUNE_THRESHOLD,
+                min_active_experts = MIN_ACTIVE_EXPERTS,
+                bias_update_interval = BIAS_UPDATE_INTERVAL,
+                clear_cache_every = CLEAR_CACHE_EVERY,
+            )
         callbacks.append(adaptive_callback)
 
     trainer = Trainer(
