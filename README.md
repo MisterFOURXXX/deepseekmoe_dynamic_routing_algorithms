@@ -88,6 +88,9 @@ REPO_ROOT="./deepseekmoe_dynamic_routing_algorithms"
 
 **Step 3: Setup System Environment and Install Python Packages**
 
+python3 -m venv venv
+source venv/bin/activate
+
 ```bash
 cd ./deepseekmoe_dynamic_routing_algorithms
 cd /kaggle/working/deepseekmoe_dynamic_routing_algorithms

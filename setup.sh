@@ -26,6 +26,7 @@ cd "$REPO_ROOT"
 
 # Registering Package (pip install -e .)/ Linking Repository Paths (pip install -e .)
 # pip install -e .
+# pip install -e ..
 pip install -e "$REPO_ROOT"
 
 echo "Environment setup complete!"

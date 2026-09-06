@@ -70,12 +70,12 @@ from torch.backends.cuda import flash_sdp_enabled, mem_efficient_sdp_enabled
 
 # Relative imports
 from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.config import DynMoEConfig
-from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.config import (
-    ADAPTIVE_AUDIT_STEPS,
-    MAX_ROUTED_EXPERTS,
-    DYNMOE_THRESHOLD_INIT,
-    INITIAL_EXPERTS
-)
+#from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.config import (
+#    ADAPTIVE_AUDIT_STEPS,
+#    MAX_ROUTED_EXPERTS,
+#    DYNMOE_THRESHOLD_INIT,
+#    INITIAL_EXPERTS
+#)
 from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.adaptive_tuning import AdaptiveExpertTuningCallback
 
 

@@ -4,15 +4,25 @@ import math
 from transformers.utils import logging
 from transformers.configuration_utils import PretrainedConfig
 
-ADAPTIVE_AUDIT_STEPS = 10         # for testing, set to 100
+# Adaptive Tuning Parameters
+AUDIT_STEPS = 10
+PRUNE_THRESHOLD = 0.1
+MIN_ACTIVE_EXPERTS = 1
+BIAS_UPDATE_INTERVAL = 5
+CLEAR_CACHE_EVERY = 40
+
+# Routing Parameters Defaults     
 MAX_ROUTED_EXPERTS   = 8
-MIN_ROUTED_EXPERTS   = 2
-DYNMOE_THRESHOLD_INIT = -0.05 #-0.005
-BIAS_UPDATE_RATE   = 0.005   
+MIN_ROUTED_EXPERTS   = 1
+MAX_ACTIVE_K         = 8  # Strict dynamic limit to prevent memory spikes
+MIN_ACTIVE_K         = 1  # Minimum threshold for zero-activation guard
+DYNMOE_THRESHOLD_INIT = -0.8 
+BIAS_UPDATE_RATE     = 0.0001 
 
 logger = logging.get_logger(__name__)
 
 DEEPSEEK_PRETRAINED_CONFIG_ARCHIVE_MAP = {}
+
 class DeepseekConfig(PretrainedConfig):
     r"""
     This is the configuration class to store the configuration of a [`DeepseekModel`]. It is used to instantiate an DeepSeek
@@ -116,52 +126,50 @@ class DeepseekConfig(PretrainedConfig):
         num_hidden_layers=6,
         num_attention_heads=32,
         num_key_value_heads=32,
-        n_shared_experts=2,
-        n_routed_experts=8,            # 4
-        num_experts_per_tok=2,
+        # --- DeepSeekMoE Core Routing ---
+        n_shared_experts=2,             # K_s: Fixed always-active shared experts
+        n_routed_experts=8,             # N_max: Static capacity pool for sub-experts
+        max_active_k=MAX_ACTIVE_K,      # K_max: Capacity bound to prevent warp divergence
+        min_active_k=MIN_ACTIVE_K,      # K_min: Minimum threshold for zero-activation guard
+        num_experts_per_tok=None,       # Deprecated in favor of dynamic Top-Any routing
         moe_layer_freq=1,
-        max_routed_experts=MAX_ROUTED_EXPERTS,            
-        min_routed_experts=MIN_ROUTED_EXPERTS,
         first_k_dense_replace=0,
-        norm_topk_prob=False,
-        scoring_func='softmax',
+        norm_topk_prob=True,
+        scoring_func="softmax",
         aux_loss_alpha=0.001, 
         seq_aux=True,
+        # --- Asynchronous Tuning & Bias Updates ---
+        router_bias_update_rate=BIAS_UPDATE_RATE, # Loss-free load balancing step size
+        router_sync_interval=100,                 # Deferred cross-GPU bias sync step interval
+        threshold_init=DYNMOE_THRESHOLD_INIT,
+        # --- Architecture & Precision Settings ---
         hidden_act="silu",
-        max_position_embeddings=2048,  
+        max_position_embeddings=4096,
         initializer_range=0.02,
-        rms_norm_eps=1e-6,
+        rms_norm_eps=1e-5,              # Kept at 1e-5 for FP16 stability on Turing GPUs
         use_cache=True,
-        pad_token_id=None,
-        bos_token_id=100000,
-        eos_token_id=100001,
+        pad_token_id=0,
+        bos_token_id=1,
+        eos_token_id=2,
         pretraining_tp=1,
         tie_word_embeddings=True,
         rope_theta=10000.0,
         rope_scaling=None,
         attention_bias=False,
-        attention_dropout=0.01,
-        adaptive_audit_steps=ADAPTIVE_AUDIT_STEPS,
-        bias_update_rate=BIAS_UPDATE_RATE,
-        threshold_init=DYNMOE_THRESHOLD_INIT,
+        attention_dropout=0.0,
+        gradient_checkpointing=True,   # enable outer checkpointing
         **kwargs,
     ):
-        # DYNMoE parameters (unchanged) 
-        self.max_routed_experts = max_routed_experts
-        self.min_routed_experts = min_routed_experts
-        self.adaptive_audit_steps = adaptive_audit_steps
-        self.bias_update_rate = bias_update_rate
-        self.threshold_init = threshold_init
-
-        # DeepSeekMoE core parameters (now match reference)
-        self.vocab_size = vocab_size
-        self.hidden_size = hidden_size
-        self.intermediate_size = intermediate_size         
-        self.moe_intermediate_size = moe_intermediate_size
-        self.num_hidden_layers = num_hidden_layers
-        self.num_attention_heads = num_attention_heads
+        # Pre-allocation limits for static expert pool
+        self.max_routed_experts = MAX_ROUTED_EXPERTS
+        self.min_routed_experts = MIN_ROUTED_EXPERTS
+        
+        # MoE & Dynamic Routing Parameters
         self.n_shared_experts = n_shared_experts
-        self.n_routed_experts = n_routed_experts           
+        self.n_routed_experts = n_routed_experts
+        self.moe_intermediate_size = moe_intermediate_size
+        self.max_active_k = max_active_k
+        self.min_active_k = min_active_k
         self.num_experts_per_tok = num_experts_per_tok
         self.moe_layer_freq = moe_layer_freq
         self.first_k_dense_replace = first_k_dense_replace
@@ -170,9 +178,22 @@ class DeepseekConfig(PretrainedConfig):
         self.aux_loss_alpha = aux_loss_alpha
         self.seq_aux = seq_aux
 
+        # Asynchronous Tuning Parameters
+        self.router_bias_update_rate = router_bias_update_rate
+        self.router_sync_interval = router_sync_interval
+        self.threshold_init = threshold_init
+
+        # Model Dimensions & Standard Transformer Params
+        self.vocab_size = vocab_size
+        self.hidden_size = hidden_size
+        self.intermediate_size = intermediate_size
+        self.num_hidden_layers = num_hidden_layers
+        self.num_attention_heads = num_attention_heads
+        
         if num_key_value_heads is None:
             num_key_value_heads = num_attention_heads
         self.num_key_value_heads = num_key_value_heads
+
         self.hidden_act = hidden_act
         self.initializer_range = initializer_range
         self.rms_norm_eps = rms_norm_eps
@@ -184,7 +205,6 @@ class DeepseekConfig(PretrainedConfig):
         self.attention_dropout = attention_dropout
         self.max_position_embeddings = max_position_embeddings
 
-        # Optional: ensure _attn_implementation is set (fallback to "sdpa")
         self._attn_implementation = kwargs.get("_attn_implementation", "sdpa")
 
         super().__init__(
@@ -195,23 +215,22 @@ class DeepseekConfig(PretrainedConfig):
             **kwargs,
         )
 
+        self._rope_scaling_validation()
+
     def _rope_scaling_validation(self):
-        """
-        Validate the `rope_scaling` configuration.
-        """
+        """Validates RoPE scaling options."""
         if self.rope_scaling is None:
             return
 
         if not isinstance(self.rope_scaling, dict) or len(self.rope_scaling) != 2:
             raise ValueError(
-                "`rope_scaling` must be a dictionary with with two fields, `type` and `factor`, "
-                f"got {self.rope_scaling}"
+                f"`rope_scaling` must be a dictionary with two fields (`type` and `factor`), got {self.rope_scaling}"
             )
         rope_scaling_type = self.rope_scaling.get("type", None)
         rope_scaling_factor = self.rope_scaling.get("factor", None)
-        if rope_scaling_type is None or rope_scaling_type not in ["linear", "dynamic"]:
+        if rope_scaling_type not in ["linear", "dynamic"]:
             raise ValueError(
                 f"`rope_scaling`'s type field must be one of ['linear', 'dynamic'], got {rope_scaling_type}"
             )
-        if rope_scaling_factor is None or not isinstance(rope_scaling_factor, float) or rope_scaling_factor <= 1.0:
+        if not isinstance(rope_scaling_factor, (int, float)) or rope_scaling_factor <= 1.0:
             raise ValueError(f"`rope_scaling`'s factor field must be a float > 1, got {rope_scaling_factor}")
