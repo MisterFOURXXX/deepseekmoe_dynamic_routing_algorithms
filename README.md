@@ -80,10 +80,10 @@ git clone https://github.com/yourusername/deepseekmoe_dynamic_routing_algorithms
 
 **Step 2: Change Download and Packages Configure Paths**
 
-At `REPO_ROOT` variable change to your project location.
+In `setup.sh` at `REPO_ROOT` variable, it has to change the path to your project location.
 
 ```bash
-REPO_ROOT="./deepseekmoe_dynamic_routing_algorithms"
+REPO_ROOT="./deepseekmoe_dynamic_routing_algorithms"   # Ex. /kaggle/working/deepseekmoe_dynamic_routing_algorithms
 ```
 
 **Step 3: Setup System Environment and Install Python Packages**
@@ -92,8 +92,7 @@ python3 -m venv venv
 source venv/bin/activate
 
 ```bash
-cd ./deepseekmoe_dynamic_routing_algorithms
-cd /kaggle/working/deepseekmoe_dynamic_routing_algorithms
+cd ./deepseekmoe_dynamic_routing_algorithms           # Ex. cd /kaggle/working/deepseekmoe_dynamic_routing_algorithms
 bash setup.sh
 ```
 
@@ -112,8 +111,7 @@ DEFAULT_EVAL_PATH = "./deepseekmoe_dynamic_routing_algorithms/dataset/eval_seque
 **Step 4.2: Run Preprocessing**
 
 ```bash
-cd ./deepseekmoe_dynamic_routing_algorithms/source/data_preprocessing
-cd /kaggle/working/deepseekmoe_dynamic_routing_algorithms/source/data_preprocessing
+cd ./deepseekmoe_dynamic_routing_algorithms/source/data_preprocessing          # Ex. cd /kaggle/working/deepseekmoe_dynamic_routing_algorithms/source/data_preprocessing
 python3 preprocessing.py
 ```
 

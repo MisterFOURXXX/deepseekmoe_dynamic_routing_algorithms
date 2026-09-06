@@ -25,9 +25,8 @@ pip install -r requirements.txt
 cd "$REPO_ROOT"
 
 # Registering Package (pip install -e .)/ Linking Repository Paths (pip install -e .)
-# pip install -e .
-# pip install -e ..
-pip install -e "$REPO_ROOT"
+pip install -e ..
+#pip install -e "$REPO_ROOT"           # If there are any errors, try this command instead of the previous one.
 
 echo "Environment setup complete!"
 
