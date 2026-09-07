@@ -68,11 +68,13 @@ from .config import DeepseekConfig
 from .adaptive_tuning import AdaptiveExpertTuningCallback
 from .config import (
     MAX_ROUTED_EXPERTS,      
-    MIN_ROUTED_EXPERTS,          
+    MIN_ROUTED_EXPERTS,
+    MAX_ACTIVE_K,
+    MAX_ACTIVE_K,
     DYNMOE_THRESHOLD_INIT, 
-    BIAS_UPDATE_RATE,   
+    BIAS_UPDATE_RATE, 
 )
-
+from .config import AUDIT_STEPS as ADAPTIVE_AUDIT_STEPS  
 """
 coding=utf-8
 Copyright 2023 DeepSeek-AI and The HuggingFace Inc. team. All rights reserved.
