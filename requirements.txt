@@ -18,25 +18,25 @@ evaluate
 gensim
 GPUtil
 mpi4py
-ninja==1.13.0
+ninja        #==1.13.0
 nlpaug
 numpy==1.26.4
 nvidia-ml-py3
 nvidia_smi
 packaging
 peft==0.12.0
-protobuf==7.36.1
+protobuf     #==7.36.1
 psutil==5.9.5
 pynvml
 pyspellchecker
 rouge-score
 sentence-transformers==2.7.0
 sentencepiece
-setuptools==81.0.0
+setuptools   #==81.0.0
 tensorboardX==2.6.5
 tqdm
 tokenizers<0.19.1
 transformers==4.44.2
-wheel==0.47.0
+wheel        #==0.47.0
 word2number
 scikit-learn==1.6.1
