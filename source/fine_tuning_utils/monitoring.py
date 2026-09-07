@@ -1,4 +1,6 @@
 import sys
+sys.path.append("..")
+
 import time
 import subprocess
 import numpy as np
