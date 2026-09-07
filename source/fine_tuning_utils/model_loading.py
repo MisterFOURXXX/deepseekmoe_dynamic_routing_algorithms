@@ -1,5 +1,5 @@
 import sys
-sys.path.append("../source")
+sys.path.append("..")
 
 import os
 import json

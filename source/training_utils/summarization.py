@@ -1,8 +1,8 @@
-import sys
-sys.path.append("../source")
-
 import numpy as np
 import pandas as pd
+
+import sys
+sys.path.append("..")
 
 def print_training_summary(resource_monitor, moemetrics_callback, train_result, eval_results, perplexity):
     avg_gpu_memory = np.mean([m['gpu_mem_gb'] for m in resource_monitor.resource_metrics])

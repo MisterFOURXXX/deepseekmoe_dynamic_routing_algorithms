@@ -1,6 +1,3 @@
-import sys
-sys.path.append("./source")
-
 import gc
 import torch
 

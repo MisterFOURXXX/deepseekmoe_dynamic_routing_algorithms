@@ -1,5 +1,5 @@
 import sys
-sys.path.append("../source")
+sys.path.append("..")
 
 from fine_tuning_utils.config import (
     OUTPUT_FT_BASELINE,

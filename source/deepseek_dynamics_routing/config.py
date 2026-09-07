@@ -1,6 +1,4 @@
 import sys
-sys.path.append("...")
-
 import os
 import math
 from transformers.utils import logging

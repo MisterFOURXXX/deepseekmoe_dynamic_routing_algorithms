@@ -1,5 +1,5 @@
 import sys
-sys.path.append("../source")
+sys.path.append("..")
 
 import os
 import gc
@@ -66,11 +66,11 @@ from deepseek_dynamics_routing.config import (
     CLEAR_CACHE_EVERY
 )
 
-from fine_tuning_utils.monitoring import ResourceMonitorCallback, MoEMetricsCallback
-from fine_tuning_utils.save_model import save_finetuned_model
-from fine_tuning_utils.summarization import print_finetuning_summary
-from fine_tuning_utils.model_loading import load_model_and_tokenizer
-from fine_tuning_utils.config import (
+from monitoring import ResourceMonitorCallback, MoEMetricsCallback
+from save_model import save_finetuned_model
+from summarization import print_finetuning_summary
+from model_loading import load_model_and_tokenizer
+from config import (
     MAX_SEQ_LEN,
     PER_DEVICE_BATCH,
     GRAD_ACCUM,

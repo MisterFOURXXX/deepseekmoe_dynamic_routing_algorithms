@@ -1,8 +1,7 @@
-import sys
-sys.path.append("../source")
-
 import os
+
 import sys
+sys.path.append("..")
 
 def save_model_and_tokenizer(trainer, output_dir):
     final_output_dir = os.path.join(output_dir, "final")

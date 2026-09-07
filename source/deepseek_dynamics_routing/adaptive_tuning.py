@@ -1,6 +1,4 @@
 import sys
-sys.path.append("...")
-
 import os
 import gc
 import torch
@@ -8,7 +6,7 @@ import math
 from transformers import TrainerCallback
 
 #from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.config import (
-from deepseek_dynamics_routing.config import (
+from config import (
     AUDIT_STEPS,
     PRUNE_THRESHOLD,
     MIN_ACTIVE_EXPERTS,

@@ -1,7 +1,5 @@
-import sys
-sys.path.append("../source")
-
 import os
+import sys
 
 def save_finetuned_model(trainer, output_dir):
     final_output_dir = os.path.join(output_dir, "fine_tuned_final")
