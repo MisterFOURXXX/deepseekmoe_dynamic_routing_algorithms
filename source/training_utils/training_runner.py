@@ -61,11 +61,10 @@ from deepseek_dynamics_routing.config import (
     CLEAR_CACHE_EVERY
 )
 
-from monitoring import ResourceMonitorCallback, MoEMetricsCallback
-from save_model import save_model_and_tokenizer
-from summarization import print_training_summary
-
-from config import (
+from .monitoring import ResourceMonitorCallback, MoEMetricsCallback
+from .save_model import save_model_and_tokenizer
+from .summarization import print_training_summary
+from .config import (
     MAX_SEQ_LEN, PER_DEVICE_BATCH, GRAD_ACCUM, LEARNING_RATE,
     NUM_EPOCHS, WARMUP_STEPS, WEIGHT_DECAY,
     EARLY_STOPPING_PATIENCE, EARLY_STOPPING_THRESHOLD, world_size

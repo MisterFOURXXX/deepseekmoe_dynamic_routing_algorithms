@@ -1,6 +1,4 @@
 import sys
-sys.path.append("..")
-
 import time
 import subprocess
 import numpy as np
@@ -28,7 +26,7 @@ from torch.utils.flop_counter import FlopCounterMode
 #from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.config import MAX_ROUTED_EXPERTS as DYN_MAX_ROUTED_EXPERTS
 #from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.config import MAX_ROUTED_EXPERTS as DR_MAX_ROUTED_EXPERTS
 
-from config import (
+from .config import (
     MAX_SEQ_LEN,
     PER_DEVICE_BATCH,
     GRAD_ACCUM,

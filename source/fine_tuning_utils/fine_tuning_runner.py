@@ -1,6 +1,4 @@
 import sys
-sys.path.append("..")
-
 import os
 import gc
 import math
@@ -66,11 +64,11 @@ from deepseek_dynamics_routing.config import (
     CLEAR_CACHE_EVERY
 )
 
-from monitoring import ResourceMonitorCallback, MoEMetricsCallback
-from save_model import save_finetuned_model
-from summarization import print_finetuning_summary
-from model_loading import load_model_and_tokenizer
-from config import (
+from .monitoring import ResourceMonitorCallback, MoEMetricsCallback
+from .save_model import save_finetuned_model
+from .summarization import print_finetuning_summary
+from .model_loading import load_model_and_tokenizer
+from .config import (
     MAX_SEQ_LEN,
     PER_DEVICE_BATCH,
     GRAD_ACCUM,
