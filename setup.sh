@@ -22,10 +22,10 @@ pip install -r requirements.txt
 
 #pip install --upgrade pip setuptools wheel
 
-cd "$REPO_ROOT"
+#cd "$REPO_ROOT"
 
 # Registering Package (pip install -e .)/ Linking Repository Paths (pip install -e .)
-pip install -e .
+#pip install -e .
 #pip install -e "$REPO_ROOT"           # If there are any errors, try this command instead of the previous one.
 
 echo "Environment setup complete!"

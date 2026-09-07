@@ -1,3 +1,6 @@
+import sys
+sys.path.append("../source")
+
 import time
 import subprocess
 import numpy as np
@@ -9,7 +12,23 @@ from torch.utils.data import DataLoader
 from transformers import TrainerCallback
 from torch.utils.flop_counter import FlopCounterMode
 
-from deepseekmoe_dynamic_routing_algorithms.source.fine_tuning_utils.config import (
+#from deepseekmoe_dynamic_routing_algorithms.source.fine_tuning_utils.config import (
+#    MAX_SEQ_LEN,
+#    PER_DEVICE_BATCH,
+#    GRAD_ACCUM,
+#    LEARNING_RATE,
+#    NUM_EPOCHS_FT,
+#    WARMUP_STEPS,
+#    WEIGHT_DECAY,
+#    EARLY_STOPPING_PATIENCE,
+#    EARLY_STOPPING_THRESHOLD,
+#    world_size
+#)
+
+#from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.config import MAX_ROUTED_EXPERTS as DYN_MAX_ROUTED_EXPERTS
+#from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.config import MAX_ROUTED_EXPERTS as DR_MAX_ROUTED_EXPERTS
+
+from fine_tuning_utils.config import (
     MAX_SEQ_LEN,
     PER_DEVICE_BATCH,
     GRAD_ACCUM,
@@ -22,9 +41,8 @@ from deepseekmoe_dynamic_routing_algorithms.source.fine_tuning_utils.config impo
     world_size
 )
 
-from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.config import MAX_ROUTED_EXPERTS as DYN_MAX_ROUTED_EXPERTS
-from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.config import MAX_ROUTED_EXPERTS as DR_MAX_ROUTED_EXPERTS
-
+from DYNMoE_baseline.config import MAX_ROUTED_EXPERTS as DYN_MAX_ROUTED_EXPERTS
+from deepseek_dynamics_routing.config import MAX_ROUTED_EXPERTS as DR_MAX_ROUTED_EXPERTS
 
 class ResourceMonitorCallback(TrainerCallback):
     def __init__(self):

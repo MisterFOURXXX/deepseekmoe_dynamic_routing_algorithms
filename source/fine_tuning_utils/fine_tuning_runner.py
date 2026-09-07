@@ -1,3 +1,6 @@
+import sys
+sys.path.append("../source")
+
 import os
 import gc
 import math
@@ -7,19 +10,55 @@ import random
 from transformers import AutoTokenizer, Trainer, TrainingArguments, DataCollatorForLanguageModeling
 from datasets import Dataset, DatasetDict
 
-# Model imports (assumes repo root is on sys.path)
-from deepseekmoe_dynamic_routing_algorithms.source.deepseek_baseline.config import DeepseekConfig as BaselineConfig
-from deepseekmoe_dynamic_routing_algorithms.source.deepseek_baseline.model import DeepseekForCausalLM as BaselineModel
+# Model imports
+#from deepseekmoe_dynamic_routing_algorithms.source.deepseek_baseline.config import DeepseekConfig as BaselineConfig
+#from deepseekmoe_dynamic_routing_algorithms.source.deepseek_baseline.model import DeepseekForCausalLM as BaselineModel
 
-from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.config import DynMoEConfig as DYNMoEBaseConfig
-from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.model import DynMoEForCausalLM as DYNMoEBaseModel
-from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.adaptive_tuning import AdaptiveExpertTuningCallback as DYNMoEBaseCallback
-from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.adaptive_tuning import ADAPTIVE_AUDIT_STEPS as DYNMoE_BASE_ADAPTIVE_AUDIT_STEPS
+#from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.config import DynMoEConfig as DYNMoEBaseConfig
+#from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.model import DynMoEForCausalLM as DYNMoEBaseModel
+#from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.adaptive_tuning import AdaptiveExpertTuningCallback as DYNMoEBaseCallback
+#from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.adaptive_tuning import ADAPTIVE_AUDIT_STEPS as DYNMoE_BASE_ADAPTIVE_AUDIT_STEPS
 
-from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.config import DeepseekConfig as DynmoeConfig
-from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.model import DeepseekForCausalLM as DynmoeModel
-from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.adaptive_tuning import AdaptiveExpertTuningCallback as DynmoeRoutingCallback
-from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.config import (
+#from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.config import DeepseekConfig as DynmoeConfig
+#from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.model import DeepseekForCausalLM as DynmoeModel
+#from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.adaptive_tuning import AdaptiveExpertTuningCallback as DynmoeRoutingCallback
+#from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.config import (
+#    AUDIT_STEPS,
+#    PRUNE_THRESHOLD,
+#    MIN_ACTIVE_EXPERTS,
+#    BIAS_UPDATE_INTERVAL,
+#    CLEAR_CACHE_EVERY
+#)
+
+#from deepseekmoe_dynamic_routing_algorithms.source.fine_tuning_utils.monitoring import ResourceMonitorCallback, MoEMetricsCallback
+#from deepseekmoe_dynamic_routing_algorithms.source.fine_tuning_utils.save_model import save_finetuned_model
+#from deepseekmoe_dynamic_routing_algorithms.source.fine_tuning_utils.summarization import print_finetuning_summary
+#from deepseekmoe_dynamic_routing_algorithms.source.fine_tuning_utils.model_loading import load_model_and_tokenizer
+#from deepseekmoe_dynamic_routing_algorithms.source.fine_tuning_utils.config import (
+#    MAX_SEQ_LEN,
+#    PER_DEVICE_BATCH,
+#    GRAD_ACCUM,
+#    LEARNING_RATE,
+#    NUM_EPOCHS_FT,
+#    WARMUP_STEPS,
+#    WEIGHT_DECAY,
+#    world_size
+#)
+
+#from deepseekmoe_dynamic_routing_algorithms.source.memory_utils import cleanup_trainer, clear_cached_data
+# Model imports
+from deepseek_baseline.config import DeepseekConfig as BaselineConfig
+from deepseek_baseline.model import DeepseekForCausalLM as BaselineModel
+
+from DYNMoE_baseline.config import DynMoEConfig as DYNMoEBaseConfig
+from DYNMoE_baseline.model import DynMoEForCausalLM as DYNMoEBaseModel
+from DYNMoE_baseline.adaptive_tuning import AdaptiveExpertTuningCallback as DYNMoEBaseCallback
+from DYNMoE_baseline.adaptive_tuning import ADAPTIVE_AUDIT_STEPS as DYNMoE_BASE_ADAPTIVE_AUDIT_STEPS
+
+from deepseek_dynamics_routing.config import DeepseekConfig as DynmoeConfig
+from deepseek_dynamics_routing.model import DeepseekForCausalLM as DynmoeModel
+from deepseek_dynamics_routing.adaptive_tuning import AdaptiveExpertTuningCallback as DynmoeRoutingCallback
+from deepseek_dynamics_routing.config import (
     AUDIT_STEPS,
     PRUNE_THRESHOLD,
     MIN_ACTIVE_EXPERTS,
@@ -27,11 +66,11 @@ from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.con
     CLEAR_CACHE_EVERY
 )
 
-from deepseekmoe_dynamic_routing_algorithms.source.fine_tuning_utils.monitoring import ResourceMonitorCallback, MoEMetricsCallback
-from deepseekmoe_dynamic_routing_algorithms.source.fine_tuning_utils.save_model import save_finetuned_model
-from deepseekmoe_dynamic_routing_algorithms.source.fine_tuning_utils.summarization import print_finetuning_summary
-from deepseekmoe_dynamic_routing_algorithms.source.fine_tuning_utils.model_loading import load_model_and_tokenizer
-from deepseekmoe_dynamic_routing_algorithms.source.fine_tuning_utils.config import (
+from fine_tuning_utils.monitoring import ResourceMonitorCallback, MoEMetricsCallback
+from fine_tuning_utils.save_model import save_finetuned_model
+from fine_tuning_utils.summarization import print_finetuning_summary
+from fine_tuning_utils.model_loading import load_model_and_tokenizer
+from fine_tuning_utils.config import (
     MAX_SEQ_LEN,
     PER_DEVICE_BATCH,
     GRAD_ACCUM,
@@ -42,7 +81,7 @@ from deepseekmoe_dynamic_routing_algorithms.source.fine_tuning_utils.config impo
     world_size
 )
 
-from deepseekmoe_dynamic_routing_algorithms.source.memory_utils import cleanup_trainer, clear_cached_data
+from memory_utils import cleanup_trainer, clear_cached_data
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
