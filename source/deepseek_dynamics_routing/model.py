@@ -537,7 +537,7 @@ def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
 class DeepseekAttention(nn.Module):
     """Multi-headed attention from 'Attention Is All You Need' paper"""
 
-    def __init__(self, config: DeepSeekConfig, layer_idx: Optional[int] = None):
+    def __init__(self, config: DeepseekConfig, layer_idx: Optional[int] = None):
         super().__init__()
         self.config = config
         self.layer_idx = layer_idx
@@ -1086,7 +1086,7 @@ Deepseek_START_DOCSTRING = r"""
     Deepseek_START_DOCSTRING,
 )
 class DeepseekPreTrainedModel(PreTrainedModel):
-    config_class = DeepSeekConfig
+    config_class = DeepseekConfig
     base_model_prefix = "model"
     supports_gradient_checkpointing = True
     _no_split_modules = ["DeepseekDecoderLayer"]
