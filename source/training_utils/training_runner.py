@@ -1,3 +1,5 @@
+from deepseek_baseline.config import DeepseekConfig as BaselineConfig
+from deepseek_baseline.model import DeepseekForCausalLM as BaselineModel
 import os
 import gc
 import math

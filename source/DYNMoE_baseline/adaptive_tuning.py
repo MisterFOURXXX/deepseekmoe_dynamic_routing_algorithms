@@ -5,7 +5,10 @@ import torch
 import math
 from transformers import TrainerCallback
 
-from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.config import (
+#from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.config import (
+#    ADAPTIVE_AUDIT_STEPS, 
+#)
+from config import (
     ADAPTIVE_AUDIT_STEPS, 
 )
 
