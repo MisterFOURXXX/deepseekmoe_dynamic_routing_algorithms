@@ -1,5 +1,7 @@
-import os
 import sys
+sys.path.append("...")
+
+import os
 import math
 import warnings
 from typing import List, Optional, Tuple, Union
@@ -49,7 +51,7 @@ if is_torch_fx_available():
 from torch.backends.cuda import flash_sdp_enabled, mem_efficient_sdp_enabled
 
 #from deepseekmoe_dynamic_routing_algorithms.source.deepseek_baseline.config import DeepseekConfig
-from .config import DeepseekConfig
+from deepseek_baseline.config import DeepseekConfig
 
 """
 coding=utf-8

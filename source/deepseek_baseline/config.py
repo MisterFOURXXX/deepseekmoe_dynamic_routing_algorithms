@@ -1,3 +1,6 @@
+import sys
+sys.path.append("...")
+
 import os
 import sys
 from transformers.utils import logging

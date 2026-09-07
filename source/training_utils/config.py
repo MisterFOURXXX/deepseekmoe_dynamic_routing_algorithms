@@ -1,3 +1,6 @@
+import sys
+sys.path.append("../source")
+
 import torch
 
 # Training hyperparameters

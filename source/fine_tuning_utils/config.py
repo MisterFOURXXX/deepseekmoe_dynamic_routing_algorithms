@@ -1,6 +1,9 @@
+import sys
+sys.path.append("../source")
+
 import torch
 
-from deepseekmoe_dynamic_routing_algorithms.source.training_utils.config import (
+from training_utils.config import (
     OUTPUT_BASELINE,
     OUTPUT_DYNMOE_BASE,
     OUTPUT_DEEPSEEK_DYNMOE

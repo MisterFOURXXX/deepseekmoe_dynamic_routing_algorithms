@@ -1,3 +1,6 @@
+import sys
+sys.path.append("../source")
+
 import os
 
 def save_finetuned_model(trainer, output_dir):

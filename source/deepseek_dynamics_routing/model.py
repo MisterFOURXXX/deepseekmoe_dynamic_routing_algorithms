@@ -1,5 +1,7 @@
-import os
 import sys
+sys.path.append("...")
+
+import os
 import math
 import warnings
 from typing import List, Optional, Tuple, Union
@@ -64,9 +66,9 @@ from torch.backends.cuda import flash_sdp_enabled, mem_efficient_sdp_enabled
 #    BIAS_UPDATE_RATE,   
 #)
 
-from .config import DeepseekConfig
-from .adaptive_tuning import AdaptiveExpertTuningCallback
-from .config import (
+from deepseek_dynamics_routing.config import DeepseekConfig
+from deepseek_dynamics_routing.adaptive_tuning import AdaptiveExpertTuningCallback
+from deepseek_dynamics_routing.config import (
     MAX_ROUTED_EXPERTS,      
     MIN_ROUTED_EXPERTS,          
     DYNMOE_THRESHOLD_INIT, 

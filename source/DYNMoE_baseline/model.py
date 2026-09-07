@@ -1,3 +1,6 @@
+import sys
+sys.path.append("...")
+
 import os
 import sys
 import torch
@@ -77,8 +80,8 @@ from torch.backends.cuda import flash_sdp_enabled, mem_efficient_sdp_enabled
 #    INITIAL_EXPERTS
 #)
 #from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.adaptive_tuning import AdaptiveExpertTuningCallback
-from .config import DynMoEConfig
-from .adaptive_tuning import AdaptiveExpertTuningCallback
+from DYNMoE_baseline.config import DynMoEConfig
+from DYNMoE_baseline.adaptive_tuning import AdaptiveExpertTuningCallback
 
 
 # RMSNorm (Phi‑2)
