@@ -118,7 +118,6 @@ class ResourceMonitorCallback(TrainerCallback):
         print(f" CPU Usage : {cpu_pct:.1f} %")
         print(f" Tokens/s : {tokens_per_sec:.0f}")
 
-
 class MoEMetricsCallback(TrainerCallback):
     def __init__(self, eval_dataset, tokenizer, data_collator,
                  early_stop_patience=3, early_stop_threshold=0.001):
@@ -146,7 +145,7 @@ class MoEMetricsCallback(TrainerCallback):
         self.is_dynmoe = None
         self._epoch_metrics_printed = False
 
-    # TrainerCallback overrides
+    # TrainerCallback
     def on_log(self, args, state, control, logs=None, **kwargs):
         if logs is not None and 'loss' in logs:
             self.last_train_loss = logs['loss']
@@ -224,14 +223,14 @@ class MoEMetricsCallback(TrainerCallback):
                 layer_expert_counts.append(arr)
                 def val_hook_fn(module, input, output):
                     nonlocal arr
-                    # Weight extraction 
+                    # --- CORRECTED weight extraction (same as working version) ---
                     if len(output) >= 2 and isinstance(output[1], torch.Tensor):
                         weights = output[1]
                     elif len(output) >= 1 and isinstance(output[0], torch.Tensor):
                         weights = output[0]
                     else:
                         return
-                    # Sum over all dimensions EXCEPT the last (expert dimension)
+                    # --- Sum over all dimensions EXCEPT the last (expert dimension) ---
                     # This yields a 1D array of length `size` regardless of input rank.
                     reduce_dims = tuple(range(weights.dim() - 1))
                     activated = (weights > 1e-8).float()
@@ -366,7 +365,7 @@ class MoEMetricsCallback(TrainerCallback):
 
         model.train()
 
-    # Helper methods (unchanged)
+    # Helper methods
     def _get_layer_list(self, model):
         if hasattr(model, 'model') and hasattr(model.model, 'layers'):
             return model.model.layers
@@ -454,7 +453,7 @@ class MoEMetricsCallback(TrainerCallback):
         else:
             return
 
-        # Sum over all dimensions except the last (expert dimension)
+        # Sum over all dimensions except the last
         reduce_dims = tuple(range(weights.dim() - 1))
         counts = (weights > 1e-8).float().sum(dim=reduce_dims).detach().cpu().numpy()
 

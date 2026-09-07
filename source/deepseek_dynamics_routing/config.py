@@ -142,7 +142,6 @@ class DeepseekConfig(PretrainedConfig):
         router_bias_update_rate=BIAS_UPDATE_RATE, # Loss-free load balancing step size
         router_sync_interval=100,                 # Deferred cross-GPU bias sync step interval
         threshold_init=DYNMOE_THRESHOLD_INIT,
-        bias_update_rate=BIAS_UPDATE_RATE,          # Bias update rate for asynchronous tuning
         # --- Architecture & Precision Settings ---
         hidden_act="silu",
         max_position_embeddings=4096,
@@ -183,7 +182,6 @@ class DeepseekConfig(PretrainedConfig):
         self.router_bias_update_rate = router_bias_update_rate
         self.router_sync_interval = router_sync_interval
         self.threshold_init = threshold_init
-        self.bias_update_rate = bias_update_rate
 
         # Model Dimensions & Standard Transformer Params
         self.vocab_size = vocab_size
