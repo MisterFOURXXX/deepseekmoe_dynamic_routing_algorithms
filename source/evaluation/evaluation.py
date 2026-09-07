@@ -191,7 +191,7 @@ def evaluate_model(model, tokenizer, test_file, device, **kwargs):
     # Active parameters & average activated experts
     num_moe_layers = len(hooks)   # each hook corresponds to one MoE layer
 
-    # 1. Determine the average number of *routed* experts activated per token
+    # Determine the average number of *routed* experts activated per token
     if is_pure_dynmoe or is_routing_prototype:
         # Try to get actual activation counts from the hook (if present)
         if hook_obj is not None and hasattr(hook_obj, 'global_counts'):
@@ -214,18 +214,18 @@ def evaluate_model(model, tokenizer, test_file, device, **kwargs):
         if avg_routed is None:
             avg_routed = 2
 
-    # 2. Get the number of shared experts (common to both architectures)
+    # Get the number of shared experts (common to both architectures)
     n_shared = getattr(unwrapped.config, 'n_shared_experts', 2)
     if n_shared is None:
         n_shared = 0   # or 2 – adjust according to your model's default
 
-    # 3. Total experts activated per token (shared + routed)
+    # Total experts activated per token (shared + routed)
     avg_activated_total = n_shared + avg_routed
 
-    # 4. Size of one expert (3 * intermediate_size * hidden_size)
+    # Size of one expert (3 * intermediate_size * hidden_size)
     expert_params = 3 * unwrapped.config.moe_intermediate_size * unwrapped.config.hidden_size
 
-    # 5. Total active parameters across all MoE layers
+    # Total active parameters across all MoE layers
     active_params = num_moe_layers * avg_activated_total * expert_params
 
     # Generation and quality metrics (ROUGE, BLEU)
