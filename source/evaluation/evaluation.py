@@ -1,4 +1,6 @@
 import sys
+sys.path.append("..")
+
 import time
 import subprocess
 import math
@@ -13,6 +15,9 @@ from rouge_score import rouge_scorer
 from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
 from torch.utils.flop_counter import FlopCounterMode
 
+from deepseek_baseline.config import DeepseekConfig as BaselineConfig
+from DYNMoE_baseline.config import DynMoEConfig as DYNMoEBaseConfig
+from deepseek_dynamics_routing.config import DeepseekConfig as DynmoeConfig
 
 def evaluate_model(model, tokenizer, test_file, device, **kwargs):
     # Default parameters
@@ -191,21 +196,23 @@ def evaluate_model(model, tokenizer, test_file, device, **kwargs):
     # Active parameters & average activated experts
     num_moe_layers = len(hooks)   # each hook corresponds to one MoE layer
 
-    if is_pure_dynmoe or is_routing_prototype:
-        total_activations = hook_obj.global_counts.sum()
-        avg_activated = total_activations / (total_tokens * num_moe_layers) if total_tokens > 0 else 0.0
-        expert_params = 3 * unwrapped.config.moe_intermediate_size * unwrapped.config.hidden_size
-        active_params = num_moe_layers * avg_activated * expert_params
-    else:
-        # Baseline fixed top‑k
-        avg_activated = getattr(unwrapped.config, 'num_experts_per_tok', 2)
-        if avg_activated is None:
-            avg_activated = 2
-        expert_params = 3 * unwrapped.config.moe_intermediate_size * unwrapped.config.hidden_size
-        n_shared = getattr(unwrapped.config, 'n_shared_experts', 2)
-        if n_shared is None:
-            n_shared = 2
-        active_params = num_moe_layers * (n_shared + avg_activated) * expert_params
+#    if is_pure_dynmoe or is_routing_prototype:
+#        total_activations = hook_obj.global_counts.sum()
+#        avg_activated = total_activations / (total_tokens * num_moe_layers) if total_tokens > 0 else 0.0
+#        expert_params = 3 * unwrapped.config.moe_intermediate_size * unwrapped.config.hidden_size
+#        active_params = num_moe_layers * avg_activated * expert_params
+#    else:
+    # Baseline fixed top‑k
+    avg_activated = getattr(unwrapped.config, 'num_experts_per_tok', 2)
+    if avg_activated is None:
+        avg_activated = 2
+
+    n_shared = getattr(unwrapped.config, 'n_shared_experts', 2)
+    if n_shared is None:
+        n_shared = 2
+
+    expert_params = 3 * unwrapped.config.moe_intermediate_size * unwrapped.config.hidden_size
+    active_params = num_moe_layers * (n_shared + avg_activated) * expert_params
 
     # Generation and quality metrics (ROUGE, BLEU)
     scorer = rouge_scorer.RougeScorer(["rouge1", "rouge2", "rougeL"], use_stemmer=True)

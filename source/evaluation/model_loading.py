@@ -3,11 +3,16 @@ sys.path.append("..")
 
 import os
 import json
+import torch
 from transformers import AutoTokenizer
 
 #from deepseekmoe_dynamic_routing_algorithms.source.deepseek_baseline.model import DeepseekForCausalLM as BaselineModel
 #from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.model import DeepseekForCausalLM as RoutingModel
 #from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.model import DynMoEForCausalLM as DynMoEModel
+
+from deepseek_baseline.config import DeepseekConfig as BaselineConfig
+from DYNMoE_baseline.config import DynMoEConfig as DYNMoEBaseConfig
+from deepseek_dynamics_routing.config import DeepseekConfig as DynmoeConfig
 
 from deepseek_baseline.model import DeepseekForCausalLM as BaselineModel
 from deepseek_dynamics_routing.model import DeepseekForCausalLM as RoutingModel
@@ -15,6 +20,20 @@ from DYNMoE_baseline.model import DynMoEForCausalLM as DynMoEModel
 
 
 def load_model_and_tokenizer(model_path):
+    # Determine which config and model classes to use
+    if "dynmoe" in model_path:
+        ConfigClass = DYNMoEBaseConfig
+        ModelClass = DynMoEModel
+    elif "routing" in model_path:
+        ConfigClass = DynmoeConfig
+        ModelClass = RoutingModel
+    else:
+        ConfigClass = BaselineConfig
+        ModelClass = BaselineModel
+
+    config = ConfigClass()
+    model = ModelClass(config)
+
     config_path = os.path.join(model_path, "config.json")
     with open(config_path, "r") as f:
         config_dict = json.load(f)
