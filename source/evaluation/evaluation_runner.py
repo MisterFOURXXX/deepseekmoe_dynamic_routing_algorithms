@@ -9,9 +9,9 @@ from transformers import AutoTokenizer
 #from deepseekmoe_dynamic_routing_algorithms.source.evaluation.evaluation import evaluate_model as evaluate_model_func
 #from deepseekmoe_dynamic_routing_algorithms.source.evaluation.model_loading import load_model_and_tokenizer
 #from deepseekmoe_dynamic_routing_algorithms.source.evaluation.config import EVAL_PARAMS
-from evaluation import evaluate_model as evaluate_model_func
-from model_loading import load_model_and_tokenizer
-from config import EVAL_PARAMS
+from .evaluation import evaluate_model as evaluate_model_func
+from .model_loading import load_model_and_tokenizer
+from .config import EVAL_PARAMS
 
 # Device
 torch.cuda.empty_cache()

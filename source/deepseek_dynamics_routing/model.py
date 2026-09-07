@@ -64,9 +64,9 @@ from torch.backends.cuda import flash_sdp_enabled, mem_efficient_sdp_enabled
 #    BIAS_UPDATE_RATE,   
 #)
 
-from config import DeepseekConfig
-from adaptive_tuning import AdaptiveExpertTuningCallback
-from config import (
+from .config import DeepseekConfig
+from .adaptive_tuning import AdaptiveExpertTuningCallback
+from .config import (
     MAX_ROUTED_EXPERTS,      
     MIN_ROUTED_EXPERTS,          
     DYNMOE_THRESHOLD_INIT, 
