@@ -9,14 +9,14 @@ AUDIT_STEPS = 10
 PRUNE_THRESHOLD = 0.1
 MIN_ACTIVE_EXPERTS = 1
 BIAS_UPDATE_INTERVAL = 5
-CLEAR_CACHE_EVERY = 40
+CLEAR_CACHE_EVERY = 20
 
 # Routing Parameters Defaults     
 MAX_ROUTED_EXPERTS   = 8
 MIN_ROUTED_EXPERTS   = 1
-MAX_ACTIVE_K         = 8  # Strict dynamic limit to prevent memory spikes
+MAX_ACTIVE_K         = 6  # Strict dynamic limit to prevent memory spikes # 8
 MIN_ACTIVE_K         = 1  # Minimum threshold for zero-activation guard
-DYNMOE_THRESHOLD_INIT = -0.8 
+DYNMOE_THRESHOLD_INIT = -0.9   #-0.8 
 BIAS_UPDATE_RATE     = 0.0001 
 
 logger = logging.get_logger(__name__)

@@ -197,12 +197,17 @@ def evaluate_model(model, tokenizer, test_file, device, **kwargs):
         expert_params = 3 * unwrapped.config.moe_intermediate_size * unwrapped.config.hidden_size
         active_params = num_moe_layers * avg_activated * expert_params
     else:
-        # Baseline fixed top‑k
+        # Baseline fixed top‑k – handle None values safely
         avg_activated = getattr(unwrapped.config, 'num_experts_per_tok', 2)
-        expert_params = 3 * unwrapped.config.moe_intermediate_size * unwrapped.config.hidden_size
+        if avg_activated is None:
+            avg_activated = 2
+
         n_shared = getattr(unwrapped.config, 'n_shared_experts', 0)
+        if n_shared is None:
+            n_shared = 0
+
+        expert_params = 3 * unwrapped.config.moe_intermediate_size * unwrapped.config.hidden_size
         active_params = num_moe_layers * (n_shared + avg_activated) * expert_params
-        avg_activated = None
 
     # Generation and quality metrics (ROUGE, BLEU)
     scorer = rouge_scorer.RougeScorer(["rouge1", "rouge2", "rougeL"], use_stemmer=True)
