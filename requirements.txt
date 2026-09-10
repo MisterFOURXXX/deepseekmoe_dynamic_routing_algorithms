@@ -1,8 +1,3 @@
-# System dependency (run before pip install):
-# apt-get update -qq && apt-get install -y libaio-dev -qq
-
-# PyTorch with CUDA 12.6 (install separately):
-# pip install torch==2.9.0 torchvision==0.24.0 torchaudio==2.9.0 --index-url https://download.pytorch.org/whl/cu126
 cache 
 purge
 jedi>=0.16
@@ -14,7 +9,6 @@ datasets==2.21.0
 dateparser
 deepspeed==0.15.0
 evaluate
-#flash-attn --no-build-isolation
 gensim
 GPUtil
 mpi4py

@@ -12,22 +12,6 @@ from torch.utils.data import DataLoader
 from transformers import TrainerCallback
 from torch.utils.flop_counter import FlopCounterMode
 
-#from deepseekmoe_dynamic_routing_algorithms.source.fine_tuning_utils.config import (
-#    MAX_SEQ_LEN,
-#    PER_DEVICE_BATCH,
-#    GRAD_ACCUM,
-#    LEARNING_RATE,
-#    NUM_EPOCHS_FT,
-#    WARMUP_STEPS,
-#    WEIGHT_DECAY,
-#    EARLY_STOPPING_PATIENCE,
-#    EARLY_STOPPING_THRESHOLD,
-#    world_size
-#)
-
-#from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.config import MAX_ROUTED_EXPERTS as DYN_MAX_ROUTED_EXPERTS
-#from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.config import MAX_ROUTED_EXPERTS as DR_MAX_ROUTED_EXPERTS
-
 from .config import (
     MAX_SEQ_LEN,
     PER_DEVICE_BATCH,
@@ -178,7 +162,7 @@ class MoEMetricsCallback(TrainerCallback):
                     vio = 0.0
                 step_vios.append(vio)
 
-                # Update biases for DYNMoE if the gate supports it
+                # Update biases for DYNMoE 
                 if layer_idx < len(self.gates) and hasattr(self.gates[layer_idx], 'update_biases'):
                     self.gates[layer_idx].update_biases(torch.from_numpy(counts).to(model.device))
 
@@ -223,15 +207,14 @@ class MoEMetricsCallback(TrainerCallback):
                 layer_expert_counts.append(arr)
                 def val_hook_fn(module, input, output):
                     nonlocal arr
-                    # --- CORRECTED weight extraction (same as working version) ---
+                    # Weight extraction
                     if len(output) >= 2 and isinstance(output[1], torch.Tensor):
                         weights = output[1]
                     elif len(output) >= 1 and isinstance(output[0], torch.Tensor):
                         weights = output[0]
                     else:
                         return
-                    # --- Sum over all dimensions EXCEPT the last (expert dimension) ---
-                    # This yields a 1D array of length `size` regardless of input rank.
+                    # Sum over all dimensions EXCEPT the last (expert dimension)
                     reduce_dims = tuple(range(weights.dim() - 1))
                     activated = (weights > 1e-8).float()
                     counts = activated.sum(dim=reduce_dims).detach().cpu().numpy()

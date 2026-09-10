@@ -45,25 +45,7 @@ if is_torch_fx_available():
         import torch.fx
         _prepare_4d_causal_attention_mask = torch.fx.wrap(_prepare_4d_causal_attention_mask)
 
-# No need to install flash-attn separately!
-# PyTorch 2.10 includes:
-# - torch.nn.functional.scaled_dot_product_attention
-# - Flash Attention kernels (when available)
-# - Memory-efficient attention
-
-# Test if flash attention is available through PyTorch
-from torch.backends.cuda import flash_sdp_enabled, mem_efficient_sdp_enabled
-
 # Relative imports
-#from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.config import DeepseekConfig
-#from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.adaptive_tuning import AdaptiveExpertTuningCallback
-#from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.config import (
-#    MAX_ROUTED_EXPERTS,      
-#    MIN_ROUTED_EXPERTS,          
-#    DYNMOE_THRESHOLD_INIT, 
-#    BIAS_UPDATE_RATE,   
-#)
-
 from .config import DeepseekConfig
 from .adaptive_tuning import AdaptiveExpertTuningCallback
 from .config import (

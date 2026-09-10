@@ -6,10 +6,6 @@ import json
 import torch
 from transformers import AutoTokenizer
 
-#from deepseekmoe_dynamic_routing_algorithms.source.deepseek_baseline.model import DeepseekForCausalLM as BaselineModel
-#from deepseekmoe_dynamic_routing_algorithms.source.deepseek_dynamics_routing.model import DeepseekForCausalLM as RoutingModel
-#from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.model import DynMoEForCausalLM as DynMoEModel
-
 from deepseek_baseline.config import DeepseekConfig as BaselineConfig
 from DYNMoE_baseline.config import DynMoEConfig as DYNMoEBaseConfig
 from deepseek_dynamics_routing.config import DeepseekConfig as DynmoeConfig

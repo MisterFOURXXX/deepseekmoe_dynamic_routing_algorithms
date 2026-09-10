@@ -34,7 +34,7 @@ def evaluate_model(model, tokenizer, test_file, device, **kwargs):
     is_routing_prototype = False
     if not is_pure_dynmoe:
         for module in unwrapped.modules():
-            # FIX 1: change 'and' to 'or' to correctly detect routing prototype
+            # Detect routing prototype
             if hasattr(module, 'update_biases') or hasattr(module, 'thresholds'):
                 is_routing_prototype = True
                 break
@@ -42,7 +42,7 @@ def evaluate_model(model, tokenizer, test_file, device, **kwargs):
     # Determine number of experts
     n_experts = getattr(unwrapped.config, 'n_routed_experts', None) or getattr(unwrapped.config, 'num_experts', 8)
 
-    # ---------- HOOK ATTACHMENT ----------
+    # HOOK ATTACHMENT
     class ExpertHook:
         def __init__(self, n_exp):
             self.global_counts = np.zeros(n_exp, dtype=np.float64)
@@ -189,8 +189,7 @@ def evaluate_model(model, tokenizer, test_file, device, **kwargs):
     measured_flops = flop_counter.get_total_flops()
     avg_flops = measured_flops / 1e9 if measured_flops else 0.0
 
-    # ---------- Active parameters & average activated experts ----------
-    # Compute avg_activated for dynamic models, else use fixed config value
+    # Active parameters & average activated experts 
     if is_pure_dynmoe or is_routing_prototype:
         total_activations = hook_obj.global_counts.sum()
         avg_activated = total_activations / (total_tokens * num_moe_layers) if total_tokens > 0 else 0.0
@@ -205,8 +204,6 @@ def evaluate_model(model, tokenizer, test_file, device, **kwargs):
 
     expert_params = 3 * unwrapped.config.moe_intermediate_size * unwrapped.config.hidden_size
 
-    # FIX 2: Do NOT multiply by num_moe_layers – this gives per‑layer active params,
-    # which matches the working reference code.
     active_params = (n_shared + avg_activated) * expert_params
 
     # Generation and quality metrics

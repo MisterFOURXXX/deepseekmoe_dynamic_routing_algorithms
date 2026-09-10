@@ -20,14 +20,6 @@ pip install torch==2.11.0 torchvision==0.26.0 torchaudio==2.11.0 --index-url htt
 # Python packages
 pip install -r requirements.txt
 
-#pip install --upgrade pip setuptools wheel
-
-#cd "$REPO_ROOT"
-
-# Registering Package (pip install -e .)/ Linking Repository Paths (pip install -e .)
-#pip install -e .
-#pip install -e "$REPO_ROOT"           # If there are any errors, try this command instead of the previous one.
-
 echo "Environment setup complete!"
 
 # Move into the dataset folder of your project

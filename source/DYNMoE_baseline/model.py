@@ -69,14 +69,6 @@ from typing import List, Optional, Tuple, Union, Dict, Any
 from torch.backends.cuda import flash_sdp_enabled, mem_efficient_sdp_enabled
 
 # Relative imports
-#from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.config import DynMoEConfig
-#from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.config import (
-#    ADAPTIVE_AUDIT_STEPS,
-#    MAX_ROUTED_EXPERTS,
-#    DYNMOE_THRESHOLD_INIT,
-#    INITIAL_EXPERTS
-#)
-#from deepseekmoe_dynamic_routing_algorithms.source.DYNMoE_baseline.adaptive_tuning import AdaptiveExpertTuningCallback
 from .config import DynMoEConfig
 from .config import (
     ADAPTIVE_AUDIT_STEPS,
@@ -85,7 +77,6 @@ from .config import (
     INITIAL_EXPERTS
 )
 from .adaptive_tuning import AdaptiveExpertTuningCallback
-
 
 # RMSNorm (Phi‑2)
 class DynMoERMSNorm(nn.Module):

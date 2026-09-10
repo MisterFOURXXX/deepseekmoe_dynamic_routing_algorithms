@@ -1,5 +1,3 @@
-from .config import DeepseekConfig
-
 import os
 import math
 import warnings
@@ -9,6 +7,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
+
 # No need to install flash-attn separately!
 # PyTorch 2.10 includes:
 # - torch.nn.functional.scaled_dot_product_attention
@@ -46,10 +45,6 @@ if is_torch_fx_available():
         import torch.fx
         _prepare_4d_causal_attention_mask = torch.fx.wrap(_prepare_4d_causal_attention_mask)
 
-# Test if flash attention is available through PyTorch
-from torch.backends.cuda import flash_sdp_enabled, mem_efficient_sdp_enabled
-
-#from deepseekmoe_dynamic_routing_algorithms.source.deepseek_baseline.config import DeepseekConfig
 from .config import DeepseekConfig
 
 """
