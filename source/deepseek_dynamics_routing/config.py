@@ -1,35 +1,63 @@
+# config.py
+"""
+Configuration and adaptive-tuning callback for DYNMoE-enhanced DeepSeekMoE.
+
+This module defines:
+    - DYNMoE / Top-Any routing defaults (Section 3.1)
+    - loss-free bias update and adaptive tuning hyper-parameters
+      (Sections 3.3.2 and 3.4)
+    - DeepseekConfig, which preserves DeepSeekMoE dimensions while exposing
+      dynamic-routing controls.
+    - AdaptiveExpertTuningCallback, which performs periodic soft pruning and
+      bias updates during training (Section 3.4).
+"""
+
 import sys
 import os
 import math
 from transformers.utils import logging
 from transformers.configuration_utils import PretrainedConfig
 
-# Adaptive Tuning Parameters
-AUDIT_STEPS = 10
-PRUNE_THRESHOLD = 0.1
-MIN_ACTIVE_EXPERTS = 1
-BIAS_UPDATE_INTERVAL = 5
-CLEAR_CACHE_EVERY = 20
+# Adaptive Tuning Parameters (Section 3.4)
+AUDIT_STEPS = 10                # periodic audit interval for soft pruning / auto-tuning
+PRUNE_THRESHOLD = 0.1           # relative-usage threshold below which an expert is soft-pruned
+MIN_ACTIVE_EXPERTS = 1          # keep at least this many routed experts active
+BIAS_UPDATE_INTERVAL = 5        # step interval for loss-free bias update (Eq. 11)
+CLEAR_CACHE_EVERY = 20          # memory-cache clearing interval (Section 3.4)
 
-# Routing Parameters Defaults     
-MAX_ROUTED_EXPERTS   = 8
-MIN_ROUTED_EXPERTS   = 4
-MAX_ACTIVE_K         = 4  # 6 # Strict dynamic limit to prevent memory spikes # 8
-MIN_ACTIVE_K         = 1  # Minimum threshold for zero-activation guard
-DYNMOE_THRESHOLD_INIT = -0.8   #-0.9, -0.8 
-BIAS_UPDATE_RATE     = 0.0005  # 0.0005 # Learning rate for bias updates
+# Routing Parameters Defaults (Sections 3.1 and 3.2)
+MAX_ROUTED_EXPERTS   = 8        # upper bound on routed expert pool (Section 3.4)
+MIN_ROUTED_EXPERTS   = 4        # lower bound on routed expert pool (Section 3.4)
+MAX_ACTIVE_K         = 4        # maximum activated routed experts per token # 6
+MIN_ACTIVE_K         = 1        # Minimum threshold for zero-activation guard (test-time safeguard, Eq. 5)
+DYNMOE_THRESHOLD_INIT = -0.8    # -0.9, -0.8 # initial raw threshold G_j before sigmoid (Eq. 2/3)
+BIAS_UPDATE_RATE     = 0.0005   # Learning rate for bias updates (Eq. 11)
 
 logger = logging.get_logger(__name__)
 
 DEEPSEEK_PRETRAINED_CONFIG_ARCHIVE_MAP = {}
 
+
 class DeepseekConfig(PretrainedConfig):
     r"""
-    This is the configuration class to store the configuration of a [`DeepseekModel`]. It is used to instantiate an DeepSeek
-    model according to the specified arguments, defining the model architecture. Instantiating a configuration with the
-    defaults will yield a similar configuration to that of the DeepSeek-7B.
-    Configuration objects inherit from [`PretrainedConfig`] and can be used to control the model outputs. Read the
-    documentation from [`PretrainedConfig`] for more information.
+    Configuration class for a DeepSeekMoE model whose routed experts use
+    DYNMoE Top-Any gating instead of fixed Top-K routing.
+
+    This config keeps DeepSeekMoE's shared-expert isolation and fine-grained
+    routed experts, while exposing DYNMoE controls for:
+        - trainable per-expert thresholds (Eq. 2-3),
+        - dynamic activated-expert count (Eq. 4),
+        - test-time safeguard (Eq. 5),
+        - L2 load-balancing + diversity auxiliary loss (Eq. 8-10),
+        - loss-free bias update (Eq. 11),
+        - adaptive expert tuning / soft pruning (Section 3.4).
+
+    This is the configuration class to store the configuration of a [`DeepseekModel`].
+    It is used to instantiate an DeepSeek model according to the specified arguments,
+    defining the model architecture. Instantiating a configuration with the defaults
+    will yield a similar configuration to that of the DeepSeek-7B.
+    Configuration objects inherit from [`PretrainedConfig`] and can be used to control
+    the model outputs. Read the documentation from [`PretrainedConfig`] for more information.
     Args:
         vocab_size (`int`, *optional*, defaults to 102400):
             Vocabulary size of the Deep model. Defines the number of different tokens that can be represented by the
@@ -126,7 +154,7 @@ class DeepseekConfig(PretrainedConfig):
         num_hidden_layers=6,
         num_attention_heads=32,
         num_key_value_heads=32,
-        # DeepSeekMoE Core Routing
+        # DeepSeekMoE Core Routing (Section 3.1 / 3.2)
         n_shared_experts=2,             # K_s: Fixed always-active shared experts
         n_routed_experts=8,             # N_max: Static capacity pool for sub-experts
         max_active_k=MAX_ACTIVE_K,      # K_max: Capacity bound to prevent warp divergence
@@ -138,7 +166,7 @@ class DeepseekConfig(PretrainedConfig):
         scoring_func="softmax",
         aux_loss_alpha=0.001, 
         seq_aux=True,
-        # Asynchronous Tuning & Bias Updates
+        # Asynchronous Tuning & Bias Updates (Section 3.3.2 / 3.4)
         router_bias_update_rate=BIAS_UPDATE_RATE, # Loss-free load balancing step size
         router_sync_interval=100,                 # Deferred cross-GPU bias sync step interval
         threshold_init=DYNMOE_THRESHOLD_INIT,
@@ -160,11 +188,11 @@ class DeepseekConfig(PretrainedConfig):
         gradient_checkpointing=True,   # enable outer checkpointing
         **kwargs,
     ):
-        # Pre-allocation limits for static expert pool
+        # Pre-allocation limits for static expert pool (Section 3.4)
         self.max_routed_experts = MAX_ROUTED_EXPERTS
         self.min_routed_experts = MIN_ROUTED_EXPERTS
         
-        # MoE & Dynamic Routing Parameters
+        # MoE & Dynamic Routing Parameters (Sections 3.1, 3.2)
         self.n_shared_experts = n_shared_experts
         self.n_routed_experts = n_routed_experts
         self.moe_intermediate_size = moe_intermediate_size
@@ -178,7 +206,7 @@ class DeepseekConfig(PretrainedConfig):
         self.aux_loss_alpha = aux_loss_alpha
         self.seq_aux = seq_aux
 
-        # Asynchronous Tuning Parameters
+        # Asynchronous Tuning Parameters (Sections 3.3.2, 3.4)
         self.router_bias_update_rate = router_bias_update_rate
         self.router_sync_interval = router_sync_interval
         self.threshold_init = threshold_init

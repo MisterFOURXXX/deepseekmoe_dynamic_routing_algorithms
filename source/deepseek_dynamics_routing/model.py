@@ -75,33 +75,6 @@ from .config import (
     BIAS_UPDATE_RATE, 
 )
 from .config import AUDIT_STEPS as ADAPTIVE_AUDIT_STEPS  
-"""
-coding=utf-8
-Copyright 2023 DeepSeek-AI and The HuggingFace Inc. team. All rights reserved.
-
-This code is based on EleutherAI's GPT-NeoX library and the GPT-NeoX
-and OPT implementations in this library. It has been modified from its
-original forms to accommodate minor architectural differences compared
-to GPT-NeoX and OPT used by the Meta AI team that trained the model.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-     http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-PyTorch DeepSeek model.
-
-Reference repository: https://huggingface.co/deepseek-ai/deepseek-moe-16b-base/tree/main
-"""
-logger = logging.get_logger(__name__)
-
-_CONFIG_FOR_DOC = "DeepseekConfig"
 
 """
 coding=utf-8
@@ -130,8 +103,17 @@ Reference repository: https://huggingface.co/deepseek-ai/deepseek-moe-16b-base/t
 logger = logging.get_logger(__name__)
 
 _CONFIG_FOR_DOC = "DeepseekConfig"
+
 
 def _get_unpad_data(attention_mask):
+    """
+    Extracts unpadded sequence data from an attention mask for FlashAttention.
+
+    Returns:
+        indices: flattened indices of non-padding tokens
+        cu_seqlens: cumulative sequence lengths
+        max_seqlen_in_batch: maximum sequence length in the batch
+    """
     seqlens_in_batch = attention_mask.sum(dim=-1, dtype=torch.int32)
     indices = torch.nonzero(attention_mask.flatten(), as_tuple=False).flatten()
     max_seqlen_in_batch = seqlens_in_batch.max().item()
@@ -144,6 +126,10 @@ def _get_unpad_data(attention_mask):
 
 
 def _expand_mask(mask: torch.Tensor, dtype: torch.dtype, tgt_len: Optional[int] = None):
+    """
+    Deprecated helper for expanding 2D attention masks to 4D.
+    Use `transformers.modeling_attn_mask_utils._prepare_4d_attention_mask` instead.
+    """
     warnings.warn(
         "Calling `transformers.models.Deepseek.modeling_Deepseek._prepare_4d_attention_mask` is deprecated and will be removed in v4.37. Use `transformers.modeling_attn_mask_utils._prepare_4d_attention_mask"
     )
@@ -153,6 +139,10 @@ def _expand_mask(mask: torch.Tensor, dtype: torch.dtype, tgt_len: Optional[int] 
 def _make_causal_mask(
     input_ids_shape: torch.Size, dtype: torch.dtype, device: torch.device, past_key_values_length: int = 0
 ):
+    """
+    Deprecated helper for creating a causal attention mask.
+    Use `AttentionMaskConverter._make_causal_mask` instead.
+    """
     warnings.warn(
         "Calling `transformers.models.Deepseek.modeling_Deepseek._make_causal_mask` is deprecated and will be removed in v4.37. Use `transformers.models.Deepseek.modeling_Deepseek.AttentionMaskConverter._make_causal_mask"
     )
@@ -162,6 +152,10 @@ def _make_causal_mask(
 
 
 class DeepseekRMSNorm(nn.Module):
+    """
+    Root Mean Square Layer Normalization (RMSNorm) used by DeepSeekMoE.
+    Equivalent to T5LayerNorm.
+    """
     def __init__(self, hidden_size, eps=1e-6):
         """
         DeepseekRMSNorm is equivalent to T5LayerNorm
@@ -182,6 +176,9 @@ ALL_LAYERNORM_LAYERS.append(DeepseekRMSNorm)
 
 
 class DeepseekRotaryEmbedding(nn.Module):
+    """
+    Rotary Position Embedding (RoPE) for DeepSeek attention.
+    """
     def __init__(self, dim, max_position_embeddings=2048, base=10000, device=None):
         super().__init__()
 
@@ -199,6 +196,7 @@ class DeepseekRotaryEmbedding(nn.Module):
 
 
     def _set_cos_sin_cache(self, seq_len, device, dtype):
+        """Precomputes and caches cosine/sine values for RoPE."""
         self.max_seq_len_cached = seq_len
         t = torch.arange(self.max_seq_len_cached, device=device, dtype=self.inv_freq.dtype)
 
@@ -209,6 +207,9 @@ class DeepseekRotaryEmbedding(nn.Module):
         self.register_buffer("sin_cached", emb.sin().to(dtype), persistent=False)
 
     def forward(self, x, seq_len=None):
+        """
+        Returns cached cosine and sine RoPE values for the requested sequence length.
+        """
         # x: [bs, num_attention_heads, seq_len, head_size]
         if self.max_seq_len_cached is None or seq_len > self.max_seq_len_cached:
             self._set_cos_sin_cache(seq_len=seq_len, device=x.device, dtype=x.dtype)
@@ -303,6 +304,9 @@ def apply_rotary_pos_emb(q, k, cos, sin, position_ids, unsqueeze_dim=1):
 
 
 class DeepseekMLP(nn.Module):
+    """
+    Standard SwiGLU MLP used for dense layers in DeepSeekMoE.
+    """
     def __init__(self, config, hidden_size = None, intermediate_size = None):
         super().__init__()
         self.config = config
@@ -336,7 +340,23 @@ class DeepseekMLP(nn.Module):
 
         return down_proj
 
+# DYNMoE Top-Any gating mechanism with adaptive expert tuning (soft pruning)
 class FusedMoEGate(nn.Module):
+    """
+    Implements the DYNMoE Top-Any gating mechanism (Eq. 2–5) integrated into
+    DeepSeekMoE, with dynamic expert activation and adaptive tuning support
+    (soft pruning, Section 3.4).
+
+    Key features:
+        - Sigmoid affinity / gating decision (Eq. 2–3)
+        - Trainable per-expert thresholds G_j (Eq. 3)
+        - Dynamic number of activated experts per token k_r (Eq. 4)
+        - Test-time safeguard: max-k cap and zero-activation top-1 fallback (Eq. 5)
+        - Straight-through estimator for binary gates
+        - L2 load-balancing + diversity auxiliary loss (Eq. 8–10)
+        - Loss-free balancing bias update (Eq. 11)
+        - Soft pruning via AdaptiveExpertTuningCallback (Section 3.4)
+    """
     def __init__(self, config):
         super().__init__()
         self.d_model = config.hidden_size
@@ -349,9 +369,13 @@ class FusedMoEGate(nn.Module):
         self.aux_loss_alpha = getattr(config, "aux_loss_alpha", 0.1)              # stronger balancing
         self.threshold_init = getattr(config, "threshold_init", -1.5)             # even lower threshold
 
+        # Gating weight matrix W_g (Eq. 1 / Eq. 2)
         self.gate_proj = nn.Linear(self.d_model, self.num_experts, bias=False)
+
+        # Trainable per-expert raw thresholds G_j (Eq. 3)
         self.thresholds = nn.Parameter(torch.full((self.num_experts,), self.threshold_init))
 
+        # Loss-free balancing biases b_i (Eq. 11) and adaptive-tuning state
         self.register_buffer("expert_bias", torch.zeros(self.num_experts))
         self.register_buffer("is_active", torch.ones(self.num_experts, dtype=torch.bool))
         self.register_buffer("routing_counts", torch.zeros(self.num_experts, dtype=torch.float32))
@@ -361,23 +385,41 @@ class FusedMoEGate(nn.Module):
         self._step_counter = 0
 
     def forward(self, x):
+        """
+        Forward pass of the Top-Any gate.
+
+        Computes:
+            - Raw logits / affinity (Eq. 1–2)
+            - Sigmoid probabilities and thresholds (Eq. 2)
+            - Binary gating decisions a_{i,t} (Eq. 3)
+            - Dynamic activated expert count k_r (Eq. 4)
+            - Test-time safeguard: max-k cap and zero-activation top-1 fallback (Eq. 5)
+            - Straight-through estimator for training
+            - Routing records and auxiliary loss (Eq. 8–10)
+
+        Returns:
+            weights: softmax-normalised routing weights over active experts,
+                     shaped [batch, seq_len, num_experts].
+        """
         bsz, seq_len, _ = x.shape
         x_flat = x.reshape(-1, self.d_model)
         T = x_flat.shape[0]
 
+        # Affinity computation (Eq. 1–2)
         logits = self.gate_proj(x_flat) + self.expert_bias
         logits = logits.masked_fill(~self.is_active, -1e9)
 
+        # Gating decision (Eq. 3): p_t = sigmoid(logits), tau = sigmoid(G)
         probs = torch.sigmoid(logits)
         thresh = torch.sigmoid(self.thresholds)
         hard_active = (probs > thresh).to(logits.dtype)
 
-        # Straight-through estimator
+        # Straight-through estimator: continuous signal p - tau during backward
         soft_signal = probs - thresh
         ste_active = hard_active + (soft_signal - soft_signal.detach())
         ste_active = ste_active.clamp(0.0, 1.0)
 
-        # Enforce max_k
+        # Enforce max_k (test-time safeguard, Eq. 5)
         counts = hard_active.sum(dim=-1, keepdim=True)
         over = counts > self.max_k
         if over.any():
@@ -386,7 +428,7 @@ class FusedMoEGate(nn.Module):
             hard_active = torch.where(over, capped, hard_active)
             ste_active = torch.where(over, capped, ste_active)
 
-        # Zero-activation fallback
+        # Zero-activation fallback (test-time safeguard, Eq. 5)
         none_active = hard_active.sum(dim=-1, keepdim=True) == 0
         if none_active.any():
             top1_idx = logits.argmax(dim=-1, keepdim=True)
@@ -397,24 +439,27 @@ class FusedMoEGate(nn.Module):
         if self.training:
             self._step_counter += 1
             with torch.no_grad():
+                # Accumulate routing records for adaptive tuning / soft pruning (Section 3.4)
                 batch_usage = hard_active.mean(dim=0)
                 self.usage_ema.mul_(0.9).add_(batch_usage, alpha=0.1)
                 self.routing_counts.add_(hard_active.sum(dim=0))
 
-            # ---- Stronger load balancing loss ----
+            # Stronger load balancing loss (Eq. 8–10) 
             tokens_per_expert = hard_active.sum(dim=0)          # [E]
             target = T / self.num_experts
-            # L2 load balancing loss (stronger than L1)
+            # L2 load balancing loss (Eq. 8)
             load_loss = torch.mean((tokens_per_expert - target) ** 2) / (target ** 2 + 1e-12)
 
-            # Orthogonality loss
+            # Orthogonality / diversity loss (Eq. 9)
             W = self.gate_proj.weight
             gram = torch.matmul(W, W.t())
             eye = torch.eye(self.num_experts, device=W.device, dtype=W.dtype)
             diversity_loss = torch.norm(gram - eye, p="fro") ** 2 / (self.num_experts ** 2 + 1e-12)
 
+            # Total auxiliary loss (Eq. 10)
             self._pending_aux_loss = self.aux_loss_alpha * (load_loss + 0.05 * diversity_loss)
 
+        # Softmax only over active experts (Eq. 5–6)
         masked_logits = logits.masked_fill(hard_active == 0, -1e9)
         weights = F.softmax(masked_logits, dim=-1)
         weights = torch.nan_to_num(weights, nan=0.0) * ste_active
@@ -423,19 +468,31 @@ class FusedMoEGate(nn.Module):
 
     # pop_aux_loss and update_loss_free_bias remain the same
     def pop_aux_loss(self) -> Optional[torch.Tensor]:
+        """
+        Returns and clears the pending auxiliary loss computed in the last
+        forward pass (Eq. 8–10).
+        """
         loss = self._pending_aux_loss
         self._pending_aux_loss = None
         return loss
 
     @torch.no_grad()
     def update_loss_free_bias(self):
+        """
+        Loss-free balancing bias update (Eq. 11):
+            b_i <- b_i - eta * sign(c_i - c_bar)
+
+        Uses accumulated routing counts c_i and the mean count c_bar.
+        This adjusts expert biases without affecting gradients.
+        """
         total = self.routing_counts.sum()
         if total > 0:
             mean_count = total / self.num_experts
             diff = self.routing_counts - mean_count
             self.expert_bias.sub_(self.bias_update_rate * torch.sign(diff))
             self.routing_counts.zero_()
-            
+
+# Memory-efficient SwiGLU FFN used in DeepSeekMoE and OptimizedDeepSeekMoE
 class DeepseekMoEFFN(nn.Module):
     """Memory-efficient SwiGLU FFN."""
     def __init__(self, config, intermediate_size=None):
@@ -449,9 +506,15 @@ class DeepseekMoEFFN(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
 
+# DYNMoE Top-Any routing integrated into DeepSeekMoE
 class OptimizedDeepSeekMoE(nn.Module):
     """
-    Memory-optimized MoE with efficient expert dispatch.
+    Memory-optimized MoE layer with DYNMoE Top-Any routing integrated into
+    DeepSeekMoE (Section 3.2, Eq. 5–7).
+
+    The shared experts are fused into a single SwiGLU GEMM. Routed experts are
+    independent SwiGLU modules. The router is a `FusedMoEGate`, which produces
+    dynamic per-token expert activation and auxiliary loss.
     """
     def __init__(self, config):
         super().__init__()
@@ -461,19 +524,28 @@ class OptimizedDeepSeekMoE(nn.Module):
         self.max_k = getattr(config, "max_active_k", 2)
         self.d_model = config.hidden_size
 
-        # Shared Experts Path - fused into single GEMM
+        # Shared Experts Path - fused into single GEMM (unchanged DeepSeekMoE design)
         shared_inter = config.moe_intermediate_size * self.num_shared
         self.shared_experts = DeepseekMoEFFN(config, intermediate_size=shared_inter)
 
-        # Dynamic Router
+        # Dynamic Router: DYNMoE Top-Any gate
         self.gate = FusedMoEGate(config)
 
-        # Routed Experts
+        # Routed Experts (fine-grained routed sub-experts)
         self.experts = nn.ModuleList(
             [DeepseekMoEFFN(config) for _ in range(self.num_experts)]
         )
 
     def forward(self, hidden_states: torch.Tensor) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        """
+        MoE forward pass (Section 3.2, Eq. 7).
+
+        Computes:
+            - Shared-expert output
+            - Top-Any routing weights and auxiliary loss from `FusedMoEGate`
+            - Weighted sum of activated routed experts
+            - Residual connection outside this module (in DecoderLayer)
+        """
         bsz, seq_len, d_model = hidden_states.shape
         T = bsz * seq_len
 
@@ -489,7 +561,7 @@ class OptimizedDeepSeekMoE(nn.Module):
 
         routed_output = torch.zeros_like(flat_hidden)
 
-        # Fixed capacity
+        # Capacity
         capacity = max(2, int(math.ceil((T * self.max_k) / self.num_experts)) + 2)
 
         for e in range(self.num_experts):
@@ -571,6 +643,7 @@ class DeepseekAttention(nn.Module):
         self._init_rope()
 
     def _init_rope(self):
+        """Initializes the RoPE module, optionally with linear or dynamic NTK scaling."""
         if self.config.rope_scaling is None:
             self.rotary_emb = DeepseekRotaryEmbedding(
                 self.head_dim,
@@ -598,6 +671,7 @@ class DeepseekAttention(nn.Module):
                 raise ValueError(f"Unknown RoPE scaling type {scaling_type}")
 
     def _shape(self, tensor: torch.Tensor, seq_len: int, bsz: int):
+        """Reshapes a tensor to [bsz, num_heads, seq_len, head_dim]."""
         return tensor.view(bsz, seq_len, self.num_heads, self.head_dim).transpose(1, 2).contiguous()
 
     def forward(
@@ -1002,10 +1076,16 @@ Deepseek_ATTENTION_CLASSES = {
     "sdpa": DeepseekSdpaAttention,
 }
 
-# --------------------------------------------------------------------------
-# 4. DeepseekDecoderLayer — unpacks (output, aux_loss) from the MoE layer
-# --------------------------------------------------------------------------
+# DeepseekDecoderLayer — unpacks (output, aux_loss) from the MoE layer
 class DeepseekDecoderLayer(nn.Module):
+    """
+    DeepSeek decoder layer.
+
+    If the layer is a MoE layer, it uses `OptimizedDeepSeekMoE`, which returns
+    both the layer output and the DYNMoE auxiliary loss (Eq. 8–10). The
+    auxiliary loss is propagated upward and added to the final language-model
+    loss in `DeepseekForCausalLM`.
+    """
     def __init__(self, config, layer_idx: int):
         super().__init__()
         self.hidden_size = config.hidden_size
@@ -1086,6 +1166,9 @@ Deepseek_START_DOCSTRING = r"""
     Deepseek_START_DOCSTRING,
 )
 class DeepseekPreTrainedModel(PreTrainedModel):
+    """
+    Base class for DeepSeek models with DYNMoE routing support.
+    """
     config_class = DeepseekConfig
     base_model_prefix = "model"
     supports_gradient_checkpointing = True
@@ -1170,6 +1253,13 @@ Deepseek_INPUTS_DOCSTRING = r"""
     Deepseek_START_DOCSTRING,
 )
 class DeepseekModel(DeepseekPreTrainedModel):
+    """
+    DeepSeek transformer backbone with DYNMoE Top-Any routing in MoE layers.
+
+    The model accumulates auxiliary losses returned by MoE decoder layers and
+    stores the total in `self._last_aux_loss`, which is later added to the
+    language-model loss in `DeepseekForCausalLM`.
+    """
     def __init__(self, config):
         super().__init__(config)
         self.padding_idx = config.pad_token_id
@@ -1238,7 +1328,7 @@ class DeepseekModel(DeepseekPreTrainedModel):
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
 
-            # ---------- Gradient Checkpointing ----------
+            # Gradient Checkpointing
             if self.gradient_checkpointing and self.training:
                 layer_outputs = torch.utils.checkpoint.checkpoint(
                     decoder_layer,
@@ -1263,6 +1353,7 @@ class DeepseekModel(DeepseekPreTrainedModel):
             hidden_states = layer_outputs[0]
             layer_aux_loss = layer_outputs[1]
             if layer_aux_loss is not None:
+                # Accumulate DYNMoE auxiliary losses from MoE layers (Eq. 8–10)
                 total_aux_loss = layer_aux_loss if total_aux_loss is None else total_aux_loss + layer_aux_loss
 
         hidden_states = self.norm(hidden_states)
@@ -1281,7 +1372,14 @@ class DeepseekModel(DeepseekPreTrainedModel):
             attentions=all_self_attns,
         )
         
+
 class DeepseekForCausalLM(DeepseekPreTrainedModel):
+    """
+    DeepSeek causal language model with DYNMoE-enhanced MoE layers.
+
+    The language-model loss is combined with the accumulated DYNMoE auxiliary
+    loss (`_last_aux_loss`) from `DeepseekModel` (Eq. 8–10).
+    """
     _tied_weights_keys = ["lm_head.weight"]
 
     def __init__(self, config):
@@ -1350,7 +1448,7 @@ class DeepseekForCausalLM(DeepseekPreTrainedModel):
             shift_labels = shift_labels.view(-1).to(shift_logits.device)
             loss = loss_fct(shift_logits, shift_labels)
 
-            # Add auxiliary loss from MoE layers
+            # Add auxiliary loss from MoE layers (DYNMoE Eq. 8–10)
             aux_loss = getattr(self.model, "_last_aux_loss", None)
             if aux_loss is not None:
                 loss = loss + aux_loss
@@ -1422,6 +1520,7 @@ class DeepseekForCausalLM(DeepseekPreTrainedModel):
             )
         return reordered_past
 
+
 @add_start_docstrings(
     """
     The Deepseek Model transformer with a sequence classification head on top (linear layer).
@@ -1436,6 +1535,10 @@ class DeepseekForCausalLM(DeepseekPreTrainedModel):
     Deepseek_START_DOCSTRING,
 )
 class DeepseekForSequenceClassification(DeepseekPreTrainedModel):
+    """
+    DeepSeek model with a sequence-classification head, using the DYNMoE-enabled
+    `DeepseekModel` backbone.
+    """
     def __init__(self, config):
         super().__init__(config)
         self.num_labels = config.num_labels

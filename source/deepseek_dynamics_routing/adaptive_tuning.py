@@ -18,14 +18,23 @@ from .config import (
 class AdaptiveExpertTuningCallback(TrainerCallback):
     """
     Hugging Face Trainer callback that triggers adaptive expert tuning
-    (pruning/addition) every `audit_steps` training steps.
+    (soft pruning / auto-tuning) every `audit_steps` training steps
+    (Section 3.4).
 
-    It calls adaptive_tune() on all gates, then sync_experts() on all MoE
-    layers. If the expert pool was resized, the optimizer is re‑created to
-    avoid parameter‑size mismatches (Section 3.4).
+    It calls `update_loss_free_bias()` on all gates at a higher frequency
+    (Eq. 11), then performs periodic soft pruning by deactivating experts
+    whose relative usage falls below `prune_threshold`, while keeping at
+    least `min_active_experts` active.
+
+    If the expert pool was resized, the optimizer is re-created to avoid
+    parameter-size mismatches (Section 3.4).
 
     Attributes:
         audit_steps: number of steps between audits
+        prune_threshold: relative-usage threshold for soft pruning
+        min_active_experts: minimum number of active routed experts
+        bias_update_interval: step interval for loss-free bias update
+        clear_cache_every: step interval for CUDA cache clearing
         global_step: current training step counter
         trainer: reference to the Trainer (set after creation)
     """
@@ -42,7 +51,15 @@ class AdaptiveExpertTuningCallback(TrainerCallback):
         self.min_active_experts = min_active_experts
         self.bias_update_interval = bias_update_interval
         self.clear_cache_every = clear_cache_every
+
     def on_step_end(self, args, state, control, model=None, **kwargs):
+        """
+        Trainer callback hook executed at the end of every training step.
+
+        - Applies loss-free bias updates every `bias_update_interval` steps (Eq. 11).
+        - Runs adaptive expert tuning / soft pruning every `audit_steps` steps (Section 3.4).
+        - Clears CUDA cache periodically to reduce memory fragmentation.
+        """
         if state.global_step == 0 or model is None:
             return
         if state.global_step % self.bias_update_interval == 0:
@@ -56,8 +73,17 @@ class AdaptiveExpertTuningCallback(TrainerCallback):
         # Periodically clear cache to reduce fragmentation
         if state.global_step % self.clear_cache_every == 0:
             torch.cuda.empty_cache()
+
     @torch.no_grad()
     def _audit_and_soft_prune(self, model):
+        """
+        Performs soft pruning of routed experts based on their relative usage
+        (Section 3.4).
+
+        Any expert whose relative usage falls below `prune_threshold` is marked
+        inactive and its gate-projection row is zeroed. The number of active
+        experts is never reduced below `min_active_experts`.
+        """
         for module in model.modules():
             if hasattr(module, "is_active") and hasattr(module, "routing_counts") and hasattr(module, "num_experts"):
                 counts = module.routing_counts.float()
