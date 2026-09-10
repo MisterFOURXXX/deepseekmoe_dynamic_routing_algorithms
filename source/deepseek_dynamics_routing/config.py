@@ -23,15 +23,15 @@ AUDIT_STEPS = 10                # periodic audit interval for soft pruning / aut
 PRUNE_THRESHOLD = 0.1           # relative-usage threshold below which an expert is soft-pruned
 MIN_ACTIVE_EXPERTS = 1          # keep at least this many routed experts active
 BIAS_UPDATE_INTERVAL = 5        # step interval for loss-free bias update (Eq. 11)
-CLEAR_CACHE_EVERY = 20          # memory-cache clearing interval (Section 3.4)
+CLEAR_CACHE_EVERY = 40          # memory-cache clearing interval (Section 3.4)
 
 # Routing Parameters Defaults (Sections 3.1 and 3.2)
 MAX_ROUTED_EXPERTS   = 8        # upper bound on routed expert pool (Section 3.4)
-MIN_ROUTED_EXPERTS   = 4        # lower bound on routed expert pool (Section 3.4)
-MAX_ACTIVE_K         = 4        # maximum activated routed experts per token # 6
+MIN_ROUTED_EXPERTS   = 1        # lower bound on routed expert pool (Section 3.4)
+MAX_ACTIVE_K         = 8        # maximum activated routed experts per token # 6
 MIN_ACTIVE_K         = 1        # Minimum threshold for zero-activation guard (test-time safeguard, Eq. 5)
-DYNMOE_THRESHOLD_INIT = -0.8    # -0.9, -0.8 # initial raw threshold G_j before sigmoid (Eq. 2/3)
-BIAS_UPDATE_RATE     = 0.0005   # Learning rate for bias updates (Eq. 11)
+DYNMOE_THRESHOLD_INIT = -0.9    # -0.9, -0.8 # initial raw threshold G_j before sigmoid (Eq. 2/3)
+BIAS_UPDATE_RATE     = 0.0001   # Learning rate for bias updates (Eq. 11)
 
 logger = logging.get_logger(__name__)
 

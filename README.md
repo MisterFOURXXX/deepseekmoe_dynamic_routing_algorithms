@@ -94,7 +94,14 @@ chmod +x bash.sh
 bash setup.sh
 ```
 
-**Note: Restart kernel after finish package installation**
+If there is any package import errors when running notebook experiments, please try:
+
+```bash
+cd ./deepseekmoe_dynamic_routing_algorithms 
+pip install -r requirements.txt
+```
+
+**Note: Restart kernel after finish running setup.sh**
 
 **Step 4: Execute Data Preprocessing**
 
