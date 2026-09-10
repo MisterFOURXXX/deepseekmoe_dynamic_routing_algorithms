@@ -13,11 +13,11 @@ CLEAR_CACHE_EVERY = 20
 
 # Routing Parameters Defaults     
 MAX_ROUTED_EXPERTS   = 8
-MIN_ROUTED_EXPERTS   = 1
-MAX_ACTIVE_K         = 6  # Strict dynamic limit to prevent memory spikes # 8
+MIN_ROUTED_EXPERTS   = 4
+MAX_ACTIVE_K         = 4  # 6 # Strict dynamic limit to prevent memory spikes # 8
 MIN_ACTIVE_K         = 1  # Minimum threshold for zero-activation guard
-DYNMOE_THRESHOLD_INIT = -0.9   #-0.8 
-BIAS_UPDATE_RATE     = 0.0001 
+DYNMOE_THRESHOLD_INIT = -0.8   #-0.9, -0.8 
+BIAS_UPDATE_RATE     = 0.0005  # 0.0005 # Learning rate for bias updates
 
 logger = logging.get_logger(__name__)
 
@@ -126,7 +126,7 @@ class DeepseekConfig(PretrainedConfig):
         num_hidden_layers=6,
         num_attention_heads=32,
         num_key_value_heads=32,
-        # --- DeepSeekMoE Core Routing ---
+        # DeepSeekMoE Core Routing
         n_shared_experts=2,             # K_s: Fixed always-active shared experts
         n_routed_experts=8,             # N_max: Static capacity pool for sub-experts
         max_active_k=MAX_ACTIVE_K,      # K_max: Capacity bound to prevent warp divergence
@@ -138,11 +138,11 @@ class DeepseekConfig(PretrainedConfig):
         scoring_func="softmax",
         aux_loss_alpha=0.001, 
         seq_aux=True,
-        # --- Asynchronous Tuning & Bias Updates ---
+        # Asynchronous Tuning & Bias Updates
         router_bias_update_rate=BIAS_UPDATE_RATE, # Loss-free load balancing step size
         router_sync_interval=100,                 # Deferred cross-GPU bias sync step interval
         threshold_init=DYNMOE_THRESHOLD_INIT,
-        # --- Architecture & Precision Settings ---
+        # Architecture & Precision Settings
         hidden_act="silu",
         max_position_embeddings=4096,
         initializer_range=0.02,
