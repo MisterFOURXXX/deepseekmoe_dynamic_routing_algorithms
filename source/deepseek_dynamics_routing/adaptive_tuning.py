@@ -27,15 +27,6 @@ class AdaptiveExpertTuningCallback(TrainerCallback):
 
     If the expert pool was resized, the optimizer is re-created to avoid
     parameter-size mismatches (Section 3.4).
-
-    Attributes:
-        audit_steps: number of steps between audits
-        prune_threshold: relative-usage threshold for soft pruning
-        min_active_experts: minimum number of active routed experts
-        bias_update_interval: step interval for loss-free bias update
-        clear_cache_every: step interval for CUDA cache clearing
-        global_step: current training step counter
-        trainer: reference to the Trainer (set after creation)
     """
     def __init__(
         self,

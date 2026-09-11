@@ -1,17 +1,3 @@
-# config.py
-"""
-Configuration and adaptive-tuning callback for DYNMoE-enhanced DeepSeekMoE.
-
-This module defines:
-    - DYNMoE / Top-Any routing defaults (Section 3.1)
-    - loss-free bias update and adaptive tuning hyper-parameters
-      (Sections 3.3.2 and 3.4)
-    - DeepseekConfig, which preserves DeepSeekMoE dimensions while exposing
-      dynamic-routing controls.
-    - AdaptiveExpertTuningCallback, which performs periodic soft pruning and
-      bias updates during training (Section 3.4).
-"""
-
 import sys
 import os
 import math
@@ -40,6 +26,17 @@ DEEPSEEK_PRETRAINED_CONFIG_ARCHIVE_MAP = {}
 
 class DeepseekConfig(PretrainedConfig):
     r"""
+    Configuration and adaptive-tuning callback for DYNMoE-enhanced DeepSeekMoE.
+
+    This module defines:
+        - DYNMoE / Top-Any routing defaults (Section 3.1)
+        - loss-free bias update and adaptive tuning hyper-parameters
+        (Sections 3.3.2 and 3.4)
+        - DeepseekConfig, which preserves DeepSeekMoE dimensions while exposing
+        dynamic-routing controls.
+        - AdaptiveExpertTuningCallback, which performs periodic soft pruning and
+        bias updates during training (Section 3.4).
+
     Configuration class for a DeepSeekMoE model whose routed experts use
     DYNMoE Top-Any gating instead of fixed Top-K routing.
 
@@ -140,7 +137,8 @@ class DeepseekConfig(PretrainedConfig):
     >>> configuration = DeepseekConfig()
     >>> # Accessing the model configuration
     >>> configuration = model.config
-    ```"""
+    ```
+    """
 
     model_type = "deepseek"
     keys_to_ignore_at_inference = ["past_key_values"]

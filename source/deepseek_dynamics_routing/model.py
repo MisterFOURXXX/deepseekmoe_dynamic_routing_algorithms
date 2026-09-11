@@ -8,6 +8,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
+
 # No need to install flash-attn separately!
 # PyTorch 2.10 includes:
 # - torch.nn.functional.scaled_dot_product_attention
@@ -1354,7 +1355,6 @@ class DeepseekModel(DeepseekPreTrainedModel):
             attentions=all_self_attns,
         )
         
-
 class DeepseekForCausalLM(DeepseekPreTrainedModel):
     """
     DeepSeek causal language model with DYNMoE-enhanced MoE layers.
