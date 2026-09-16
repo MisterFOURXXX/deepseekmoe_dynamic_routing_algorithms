@@ -19,6 +19,83 @@ from ..deepseek_baseline.config import DeepseekConfig as BaselineConfig
 from ..DYNMoE_baseline.config import DynMoEConfig as DYNMoEBaseConfig
 from ..deepseek_dynamics_routing.config import DeepseekConfig as DynmoeConfig
 
+
+# ---------------------------------------------------------------------------
+# Architecture-agnostic helpers
+# ---------------------------------------------------------------------------
+def _find_transformer_layers(unwrapped):
+    """Locate the transformer layer list from various architectures.
+
+    Handles:
+      * HF-style:        unwrapped.model.layers                       (DeepSeek baseline)
+      * DynMoE custom:   unwrapped.transformer.decoder.layers         (DYNMoE baseline)
+      * Nested HF:       unwrapped.transformer.model.layers
+      * Flat:            unwrapped.transformer.layers
+      * Top-level:       unwrapped.layers
+    """
+    if hasattr(unwrapped, 'model') and hasattr(unwrapped.model, 'layers'):
+        return unwrapped.model.layers
+    if hasattr(unwrapped, 'transformer'):
+        t = unwrapped.transformer
+        if hasattr(t, 'decoder') and hasattr(t.decoder, 'layers'):
+            return t.decoder.layers
+        if hasattr(t, 'model') and hasattr(t.model, 'layers'):
+            return t.model.layers
+        if hasattr(t, 'layers'):
+            return t.layers
+    if hasattr(unwrapped, 'layers'):
+        return unwrapped.layers
+    return None
+
+
+def _collect_gates(unwrapped):
+    """Find all MoE gate modules across architectures."""
+    gates = []
+    layers = _find_transformer_layers(unwrapped)
+    if layers is not None:
+        for layer in layers:
+            mlp = getattr(layer, 'mlp', None)
+            if mlp is not None and hasattr(mlp, 'gate'):
+                gates.append(mlp.gate)
+
+    if not gates:
+        # Fallback: walk every module looking for something that looks like a gate
+        for name, module in unwrapped.named_modules():
+            leaf = name.split('.')[-1]
+            if leaf in ('gate', 'router') and hasattr(module, 'n_routed_experts'):
+                gates.append(module)
+    return gates
+
+
+def _detect_architecture(unwrapped):
+    """Return (is_pure_dynmoe, is_routing_prototype).
+
+    We must NOT rely solely on config.model_type because not every
+    architecture sets it. We also fall back to inspecting the gate class.
+    """
+    is_pure_dynmoe = getattr(unwrapped.config, 'model_type', '') == "dynmoe"
+
+    if not is_pure_dynmoe:
+        for module in unwrapped.modules():
+            if type(module).__name__ == "DynamicMoEGate":
+                is_pure_dynmoe = True
+                break
+
+    is_routing_prototype = False
+    if not is_pure_dynmoe:
+        for module in unwrapped.modules():
+            # The routing prototype exposes ``update_biases``;
+            # the DYNMoE gate does NOT (it uses ``thresholds`` + ``_tune_experts``).
+            if hasattr(module, 'update_biases'):
+                is_routing_prototype = True
+                break
+
+    return is_pure_dynmoe, is_routing_prototype
+
+
+# ---------------------------------------------------------------------------
+# Main evaluation
+# ---------------------------------------------------------------------------
 def evaluate_model(model, tokenizer, test_file, device, **kwargs):
     # Default parameters
     max_seq_len = kwargs.get('max_seq_len', 256)
@@ -30,19 +107,17 @@ def evaluate_model(model, tokenizer, test_file, device, **kwargs):
     unwrapped = model.module if hasattr(model, 'module') else model
 
     # Determine architecture type
-    is_pure_dynmoe = hasattr(unwrapped.config, 'model_type') and unwrapped.config.model_type == "dynmoe"
-    is_routing_prototype = False
-    if not is_pure_dynmoe:
-        for module in unwrapped.modules():
-            # Detect routing prototype
-            if hasattr(module, 'update_biases') or hasattr(module, 'thresholds'):
-                is_routing_prototype = True
-                break
+    is_pure_dynmoe, is_routing_prototype = _detect_architecture(unwrapped)
 
     # Determine number of experts
-    n_experts = getattr(unwrapped.config, 'n_routed_experts', None) or getattr(unwrapped.config, 'num_experts', 8)
+    n_experts = (
+        getattr(unwrapped.config, 'n_routed_experts', None)
+        or getattr(unwrapped.config, 'num_experts', 8)
+    )
 
-    # HOOK ATTACHMENT
+    # ------------------------------------------------------------------
+    # HOOK
+    # ------------------------------------------------------------------
     class ExpertHook:
         def __init__(self, n_exp):
             self.global_counts = np.zeros(n_exp, dtype=np.float64)
@@ -53,11 +128,11 @@ def evaluate_model(model, tokenizer, test_file, device, **kwargs):
 
         def __call__(self, module, inp, out):
             if self.is_pure_dynmoe:
-                # Pure DYNMoE gate returns (topk_idx, topk_weight, aux_loss)
-                topk_weight = out[1]      # shape [B*S, K]
+                # DynamicMoEGate returns (topk_idx, topk_weight, aux_loss)
+                topk_weight = out[1]              # (N, K)
                 counts = (topk_weight > 1e-8).float().sum(dim=0).detach().cpu().numpy()
             elif self.is_routing:
-                # Routing prototype gate returns (topk_weight, aux_loss, token_counts)
+                # Routing prototype returns (topk_weight, aux_loss, token_counts)
                 topk_weight = out[0]
                 counts = (topk_weight > 1e-8).float().sum(dim=0).detach().cpu().numpy()
             else:
@@ -65,36 +140,48 @@ def evaluate_model(model, tokenizer, test_file, device, **kwargs):
                 topk_idx = out[0]
                 if topk_idx.is_floating_point():
                     topk_idx = topk_idx.long()
-                counts = torch.bincount(topk_idx.flatten(), minlength=module.n_routed_experts).cpu().numpy()
+                n_exp = getattr(module, 'n_routed_experts', counts_len_fallback)
+                counts = torch.bincount(
+                    topk_idx.flatten(), minlength=n_exp
+                ).cpu().numpy()
 
             if self.batch_counts is None:
                 self.batch_counts = counts
             else:
+                # Align lengths in case of dynamic expert count
+                if counts.shape[0] != self.batch_counts.shape[0]:
+                    m = max(counts.shape[0], self.batch_counts.shape[0])
+                    bc = np.zeros(m, dtype=self.batch_counts.dtype)
+                    bc[: self.batch_counts.shape[0]] = self.batch_counts
+                    self.batch_counts = bc
+                    cc = np.zeros(m, dtype=counts.dtype)
+                    cc[: counts.shape[0]] = counts
+                    counts = cc
                 self.batch_counts += counts
             self.global_counts += counts
 
         def reset_batch(self):
             self.batch_counts = None
 
+    # Fallback length used only when a gate lacks ``n_routed_experts``
+    counts_len_fallback = n_experts
+
     hook_obj = ExpertHook(n_experts)
     hooks = []
 
-    # Attach hooks to all gates in the model's layers
-    if hasattr(unwrapped, 'model') and hasattr(unwrapped.model, 'layers'):
-        for layer in unwrapped.model.layers:
-            if hasattr(layer, 'mlp') and hasattr(layer.mlp, 'gate'):
-                hooks.append(layer.mlp.gate.register_forward_hook(hook_obj))
-    else:
-        # Fallback: search all modules for gate-like objects
-        for module in unwrapped.modules():
-            if hasattr(module, 'n_routed_experts') and hasattr(module, 'forward'):
-                if any(parent is module for parent in [getattr(layer, 'mlp', None) for layer in unwrapped.model.layers]):
-                    hooks.append(module.register_forward_hook(hook_obj))
+    # Attach hooks to every MoE gate discovered in the model
+    gates = _collect_gates(unwrapped)
+    for gate in gates:
+        hooks.append(gate.register_forward_hook(hook_obj))
 
     num_moe_layers = len(hooks)
-    print(f"Attached {num_moe_layers} expert‑balance hooks")
+    print(f"Attached {num_moe_layers} expert-balance hooks")
+    if num_moe_layers == 0:
+        print("[WARN] No MoE gates were found — expert-balance metrics will be zero.")
 
-    # Load test data and prepare dataloader
+    # ------------------------------------------------------------------
+    # Data loading
+    # ------------------------------------------------------------------
     user_utterances = []
     references = []
     current_user = None
@@ -134,7 +221,9 @@ def evaluate_model(model, tokenizer, test_file, device, **kwargs):
         pin_memory=True
     )
 
+    # ------------------------------------------------------------------
     # Perplexity, MaxVIO, FLOPs
+    # ------------------------------------------------------------------
     total_loss = 0.0
     total_tokens = 0
     flop_counter = FlopCounterMode(display=False)
@@ -158,7 +247,7 @@ def evaluate_model(model, tokenizer, test_file, device, **kwargs):
                 total_loss += loss.sum().item()
                 total_tokens += (shift_labels != -100).sum().item()
 
-                # Batch‑level MaxVIO
+                # Batch-level MaxVIO
                 if hook_obj.batch_counts is not None:
                     tot = hook_obj.batch_counts.sum()
                     if tot > 0:
@@ -189,10 +278,13 @@ def evaluate_model(model, tokenizer, test_file, device, **kwargs):
     measured_flops = flop_counter.get_total_flops()
     avg_flops = measured_flops / 1e9 if measured_flops else 0.0
 
-    # Active parameters & average activated experts 
-    if is_pure_dynmoe or is_routing_prototype:
+    # Active parameters & average activated experts
+    if (is_pure_dynmoe or is_routing_prototype) and num_moe_layers > 0:
         total_activations = hook_obj.global_counts.sum()
-        avg_activated = total_activations / (total_tokens * num_moe_layers) if total_tokens > 0 else 0.0
+        avg_activated = (
+            total_activations / (total_tokens * num_moe_layers)
+            if total_tokens > 0 else 0.0
+        )
     else:
         avg_activated = getattr(unwrapped.config, 'num_experts_per_tok', 2)
         if avg_activated is None:
@@ -202,11 +294,14 @@ def evaluate_model(model, tokenizer, test_file, device, **kwargs):
     if n_shared is None:
         n_shared = 2
 
-    expert_params = 3 * unwrapped.config.moe_intermediate_size * unwrapped.config.hidden_size
-
+    expert_params = (
+        3 * unwrapped.config.moe_intermediate_size * unwrapped.config.hidden_size
+    )
     active_params = (n_shared + avg_activated) * expert_params
 
+    # ------------------------------------------------------------------
     # Generation and quality metrics
+    # ------------------------------------------------------------------
     scorer = rouge_scorer.RougeScorer(["rouge1", "rouge2", "rougeL"], use_stemmer=True)
     smooth = SmoothingFunction().method4
 
@@ -220,8 +315,8 @@ def evaluate_model(model, tokenizer, test_file, device, **kwargs):
 
     print("Generating responses...")
     for i in range(0, len(user_utterances), eval_batch_size):
-        batch_u = user_utterances[i:i+eval_batch_size]
-        batch_ref = references[i:i+eval_batch_size]
+        batch_u = user_utterances[i:i + eval_batch_size]
+        batch_ref = references[i:i + eval_batch_size]
         prompts = [f"User: {u}\nSystem: " for u in batch_u]
 
         inputs = tokenizer(
@@ -249,7 +344,9 @@ def evaluate_model(model, tokenizer, test_file, device, **kwargs):
         for res, ref in zip(responses, batch_ref):
             res = res.strip()
             ref = ref.strip()
-            bleu_scores.append(sentence_bleu([ref.split()], res.split(), smoothing_function=smooth))
+            bleu_scores.append(
+                sentence_bleu([ref.split()], res.split(), smoothing_function=smooth)
+            )
             scores = scorer.score(ref, res)
             rouge1_scores.append(scores["rouge1"].fmeasure)
             rouge2_scores.append(scores["rouge2"].fmeasure)
@@ -260,14 +357,18 @@ def evaluate_model(model, tokenizer, test_file, device, **kwargs):
         sys_mem_gb = psutil.virtual_memory().used / (1024 ** 3)
 
         smi = subprocess.run(
-            ["nvidia-smi", "--query-gpu=utilization.gpu,memory.used", "--format=csv,noheader,nounits"],
+            ["nvidia-smi", "--query-gpu=utilization.gpu,memory.used",
+             "--format=csv,noheader,nounits"],
             capture_output=True, text=True
         )
         lines = [l.strip() for l in smi.stdout.splitlines() if l.strip()]
         if lines:
             gpu_util = np.mean([float(l.split(",")[0]) for l in lines])
             gpu_mem_gb = np.mean([float(l.split(",")[1]) for l in lines]) / 1024
-            resources.append({"cpu": cpu_pct, "gpu": gpu_util, "gmem": gpu_mem_gb, "smem": sys_mem_gb})
+            resources.append({
+                "cpu": cpu_pct, "gpu": gpu_util,
+                "gmem": gpu_mem_gb, "smem": sys_mem_gb
+            })
 
     gen_time = time.time() - gen_start
     avg_tps = gen_tokens_total / gen_time if gen_time > 0 else 0
