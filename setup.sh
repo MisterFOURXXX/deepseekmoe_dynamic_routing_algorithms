@@ -5,8 +5,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
 # Set repository root variable
-#REPO_ROOT="/home/ubuntu/deepseekmoe_dynamic_routing_algorithms"
-REPO_ROOT="/kaggle/working/deepseekmoe_dynamic_routing_algorithms"
+REPO_ROOT="/home/ubuntu/deepseekmoe_dynamic_routing_algorithms"
 
 #Navigating to Repository Root
 cd "$REPO_ROOT"

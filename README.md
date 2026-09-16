@@ -83,7 +83,7 @@ git clone https://github.com/yourusername/deepseekmoe_dynamic_routing_algorithms
 In `setup.sh` at `REPO_ROOT` variable, it has to change the path to your project location.
 
 ```bash
-REPO_ROOT="./deepseekmoe_dynamic_routing_algorithms"   # Ex. /kaggle/working/
+REPO_ROOT="./deepseekmoe_dynamic_routing_algorithms"   # Ex. cd /kaggle/working/deepseekmoe_dynamic_routing_algorithms
 ```
 
 **Step 3: Setup System Environment and Install Python Packages**
@@ -91,7 +91,7 @@ REPO_ROOT="./deepseekmoe_dynamic_routing_algorithms"   # Ex. /kaggle/working/
 **Step 3.1:** Create virtual environments
 
 ```bash
-cd ~/deepseekmoe_dynamic_routing_algorithms
+cd ./deepseekmoe_dynamic_routing_algorithms            # Ex. cd /kaggle/working/deepseekmoe_dynamic_routing_algorithms
 python3 -m venv .venv
 source .venv/bin/activate
 python --version                  # should print Python 3.xx.xx
@@ -100,7 +100,7 @@ python --version                  # should print Python 3.xx.xx
 **Step 3.2:** Setup all environments and packages
 
 ```bash
-cd ~/deepseekmoe_dynamic_routing_algorithms           # Ex. cd /kaggle/working/
+cd ./deepseekmoe_dynamic_routing_algorithms            # Ex. cd /kaggle/working/deepseekmoe_dynamic_routing_algorithms
 chmod +x setup.sh
 bash setup.sh
 ```
@@ -108,7 +108,7 @@ bash setup.sh
 If there is any package import errors when running notebook experiments, please try:
 
 ```bash
-cd ./deepseekmoe_dynamic_routing_algorithms 
+cd ./deepseekmoe_dynamic_routing_algorithms            # Ex. cd /kaggle/working/deepseekmoe_dynamic_routing_algorithms
 python -m pip install --upgrade pip setuptools wheel
 # PyTorch with CUDA
 python -m pip install torch==2.11.0 torchvision==0.26.0 torchaudio==2.11.0 --index-url https://download.pytorch.org/whl/cu128
