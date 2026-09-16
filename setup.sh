@@ -5,7 +5,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
 # Set repository root variable
-REPO_ROOT="/kaggle/working/deepseekmoe_dynamic_routing_algorithms"
+REPO_ROOT="/home/ubuntu/deepseekmoe_dynamic_routing_algorithms"
 
 #Navigating to Repository Root
 cd "$REPO_ROOT"
@@ -13,6 +13,8 @@ cd "$REPO_ROOT"
 # System dependencies
 sed -i 's/archive.ubuntu.com/mirrors.kernel.org/g' /etc/apt/sources.list
 apt-get update -qq && apt-get install -y libaio-dev -qq
+
+pip install --upgrade pip
 
 # PyTorch with CUDA
 pip install torch==2.11.0 torchvision==0.26.0 torchaudio==2.11.0 --index-url https://download.pytorch.org/whl/cu128

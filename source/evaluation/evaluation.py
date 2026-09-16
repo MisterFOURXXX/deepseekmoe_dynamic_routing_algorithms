@@ -15,9 +15,9 @@ from rouge_score import rouge_scorer
 from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
 from torch.utils.flop_counter import FlopCounterMode
 
-from deepseek_baseline.config import DeepseekConfig as BaselineConfig
-from DYNMoE_baseline.config import DynMoEConfig as DYNMoEBaseConfig
-from deepseek_dynamics_routing.config import DeepseekConfig as DynmoeConfig
+from ..deepseek_baseline.config import DeepseekConfig as BaselineConfig
+from ..DYNMoE_baseline.config import DynMoEConfig as DYNMoEBaseConfig
+from ..deepseek_dynamics_routing.config import DeepseekConfig as DynmoeConfig
 
 def evaluate_model(model, tokenizer, test_file, device, **kwargs):
     # Default parameters
