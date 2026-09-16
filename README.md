@@ -94,14 +94,14 @@ REPO_ROOT="./deepseekmoe_dynamic_routing_algorithms"   # Ex. /kaggle/working/
 cd ~/deepseekmoe_dynamic_routing_algorithms
 python3 -m venv .venv
 source .venv/bin/activate
-python --version                  # should print Python 3.11.x
+python --version                  # should print Python 3.xx.xx
 ```
 
 **Step 3.2:** Setup all environments and packages
 
 ```bash
-cd ./deepseekmoe_dynamic_routing_algorithms           # Ex. cd /kaggle/working/
-chmod +x bash.sh
+cd ~/deepseekmoe_dynamic_routing_algorithms           # Ex. cd /kaggle/working/
+chmod +x setup.sh
 bash setup.sh
 ```
 
@@ -109,7 +109,11 @@ If there is any package import errors when running notebook experiments, please 
 
 ```bash
 cd ./deepseekmoe_dynamic_routing_algorithms 
-pip install -r requirements.txt
+python -m pip install --upgrade pip setuptools wheel
+# PyTorch with CUDA
+python -m pip install torch==2.11.0 torchvision==0.26.0 torchaudio==2.11.0 --index-url https://download.pytorch.org/whl/cu128
+# Python packages
+python -m pip install -r requirements.txt
 ```
 
 **Note: Restart kernel after finish running setup.sh**

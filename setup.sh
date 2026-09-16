@@ -11,16 +11,19 @@ REPO_ROOT="/home/ubuntu/deepseekmoe_dynamic_routing_algorithms"
 cd "$REPO_ROOT"
 
 # System dependencies
-sed -i 's/archive.ubuntu.com/mirrors.kernel.org/g' /etc/apt/sources.list
-apt-get update -qq && apt-get install -y libaio-dev -qq
+#sed -i 's/archive.ubuntu.com/mirrors.kernel.org/g' /etc/apt/sources.list
+sudo apt-get update -qq && sudo apt-get install -y libaio-dev -qq
+# sudo add-apt-repository ppa:deadsnakes/ppa -y
+# sudo apt install -y python3.11 python3.11-venv python3.11-dev
+# sudo apt update
 
-pip install --upgrade pip
+python -m pip install --upgrade pip setuptools wheel
 
 # PyTorch with CUDA
-pip install torch==2.11.0 torchvision==0.26.0 torchaudio==2.11.0 --index-url https://download.pytorch.org/whl/cu128
+python -m pip install torch==2.11.0 torchvision==0.26.0 torchaudio==2.11.0 --index-url https://download.pytorch.org/whl/cu128
 
 # Python packages
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 
 echo "Environment setup complete!"
 

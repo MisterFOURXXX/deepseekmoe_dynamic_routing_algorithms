@@ -24,15 +24,15 @@ world_size = torch.cuda.device_count()
 # Paths to pre‑trained models (output from training comparison)
 PRETRAINED_BASELINE = OUTPUT_BASELINE + "/final"
 # Output directories for fine‑tuned versions
-OUTPUT_FT_BASELINE = "/kaggle/working/deepseekmoe_dynamic_routing_algorithms/checkpoints/baseline-ft"
+OUTPUT_FT_BASELINE = PRETRAINED_BASELINE + "/baseline-ft"
 
 # Paths to pre‑trained models (output from training comparison)
 PRETRAINED_DYNMOE_BASE = OUTPUT_DYNMOE_BASE + "/final"
 # Output directories for fine‑tuned versions
-OUTPUT_FT_DYNMOE_BASE = "/kaggle/working/deepseekmoe_dynamic_routing_algorithms/checkpoints/dynmoe_baseline-ft"
+OUTPUT_FT_DYNMOE_BASE = PRETRAINED_DYNMOE_BASE + "/dynmoe_baseline-ft"
 
 # Paths to pre‑trained models (output from training comparison)
 PRETRAINED_DYNMOE_ROUTING = OUTPUT_DEEPSEEK_DYNMOE + "/final"
 # Output directories for fine‑tuned versions
-OUTPUT_FT_DYNMOE_ROUTING = "/kaggle/working/deepseekmoe_dynamic_routing_algorithms/checkpoints/dynmoe_routing-ft"
+OUTPUT_FT_DYNMOE_ROUTING = PRETRAINED_DYNMOE_ROUTING + "/dynmoe_routing-ft"
 
