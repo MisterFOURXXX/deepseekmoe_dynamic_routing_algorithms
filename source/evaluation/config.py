@@ -1,10 +1,16 @@
 import sys
 sys.path.append("..")
 
-from ..fine_tuning_utils.config import (
-    OUTPUT_FT_BASELINE,
-    OUTPUT_FT_DYNMOE_BASE,
-    OUTPUT_FT_DYNMOE_ROUTING
+#from ..fine_tuning_utils.config import (
+#    OUTPUT_FT_BASELINE,
+#    OUTPUT_FT_DYNMOE_BASE,
+#    OUTPUT_FT_DYNMOE_ROUTING
+#)
+
+from ..training_utils.config import (
+    OUTPUT_BASELINE,
+    OUTPUT_DYNMOE_BASE,
+    OUTPUT_DEEPSEEK_DYNMOE
 )
 
 EVAL_PARAMS = {
@@ -15,6 +21,15 @@ EVAL_PARAMS = {
 }
 
 # Default paths revise follow your storage path
-OUTPUT_FT_BASELINE = OUTPUT_FT_BASELINE + "/final"
-OUTPUT_FT_DYNMOE_BASE = OUTPUT_FT_DYNMOE_BASE + "/final"
-OUTPUT_FT_DYNMOE_ROUTING = OUTPUT_FT_DYNMOE_ROUTING + "/final"
+# OUTPUT_FT_BASELINE = OUTPUT_FT_BASELINE + "/final"
+# OUTPUT_FT_DYNMOE_BASE = OUTPUT_FT_DYNMOE_BASE + "/final"
+# OUTPUT_FT_DYNMOE_ROUTING = OUTPUT_FT_DYNMOE_ROUTING + "/final"
+
+# Paths to pre‑trained models (output from training comparison)
+PRETRAINED_BASELINE = OUTPUT_BASELINE + "/final"
+
+# Paths to pre‑trained models (output from training comparison)
+PRETRAINED_DYNMOE_BASE = OUTPUT_DYNMOE_BASE + "/final"
+
+# Paths to pre‑trained models (output from training comparison)
+PRETRAINED_DYNMOE_ROUTING = OUTPUT_DEEPSEEK_DYNMOE + "/final"
