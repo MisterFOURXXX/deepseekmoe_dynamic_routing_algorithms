@@ -29,7 +29,7 @@ sentencepiece
 setuptools   #==81.0.0
 tensorboardX==2.6.5
 tqdm
-tokenizers==0.19.1
+tokenizers<0.19.1
 transformers==4.44.2
 wheel        #==0.47.0
 word2number
