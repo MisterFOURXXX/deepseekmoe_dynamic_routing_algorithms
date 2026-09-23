@@ -16,7 +16,7 @@ MAX_ROUTED_EXPERTS   = 8        # upper bound on routed expert pool (Section 3.4
 MIN_ROUTED_EXPERTS   = 1        # lower bound on routed expert pool (Section 3.4)
 MAX_ACTIVE_K         = 6        # maximum activated routed experts per token # 8
 MIN_ACTIVE_K         = 1        # Minimum threshold for zero-activation guard (test-time safeguard, Eq. 5)
-DYNMOE_THRESHOLD_INIT = -0.6    # initial raw threshold G_j before sigmoid (Eq. 2/3) #-0.9
+DYNMOE_THRESHOLD_INIT = -0.5    # initial raw threshold G_j before sigmoid (Eq. 2/3) #-0.6,-0.9
 BIAS_UPDATE_RATE     = 0.0005   # Learning rate for bias updates (Eq. 11) #0.0001
 
 logger = logging.get_logger(__name__)
