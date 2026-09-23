@@ -19,7 +19,7 @@ nvidia-ml-py3
 nvidia_smi
 packaging==26.3
 peft==0.12.0
-protobuf==4.25.5     #==7.36.1
+protobuf==7.36.2     #==7.36.1
 psutil==7.2.2
 pynvml
 pyspellchecker
