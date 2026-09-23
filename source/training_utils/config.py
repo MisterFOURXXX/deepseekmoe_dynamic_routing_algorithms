@@ -16,6 +16,6 @@ EARLY_STOPPING_THRESHOLD = 0.001
 world_size = torch.cuda.device_count()         
 
 # Paths to pre‑trained models (output from training comparison)
-OUTPUT_BASELINE = "/home/ubuntu/deepseekmoe_dynamic_routing_algorithms/checkpoints/baseline"
-OUTPUT_DYNMOE_BASE = "/home/ubuntu/deepseekmoe_dynamic_routing_algorithms/checkpoints/dynmoe_baseline"
-OUTPUT_DEEPSEEK_DYNMOE = "/home/ubuntu/deepseekmoe_dynamic_routing_algorithms/checkpoints/dynmoe_routing"
+OUTPUT_BASELINE = "/kaggle/working/deepseekmoe_dynamic_routing_algorithms/checkpoints/baseline"
+OUTPUT_DYNMOE_BASE = "/kaggle/working/deepseekmoe_dynamic_routing_algorithms/checkpoints/dynmoe_baseline"
+OUTPUT_DEEPSEEK_DYNMOE = "/kaggle/working/deepseekmoe_dynamic_routing_algorithms/checkpoints/dynmoe_routing"
