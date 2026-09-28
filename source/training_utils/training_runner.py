@@ -140,6 +140,7 @@ def _prepare_data(
         tokenizer=tokenizer,
         mlm=False,
         pad_to_multiple_of=8
+        dtype=torch.float16
     )
 
     return tokenizer, tokenized_datasets, data_collator
@@ -160,6 +161,7 @@ def train_model(ModelClass, ConfigClass, output_dir, is_dynmoe=False,
     model = ModelClass(config)
     model.resize_token_embeddings(len(tokenizer))
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    model = model.half()                  ########
     model = model.to(device)
     model.config.use_cache = False
     model.train()
