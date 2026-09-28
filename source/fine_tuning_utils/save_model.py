@@ -26,5 +26,5 @@ def save_finetuned_model(trainer, output_dir):
     # Ensure the tokenizer is saved (Trainer.save_model usually does this,
     #    but we do it explicitly for safety and future compatibility).
     trainer.tokenizer.save_pretrained(final_output_dir)
-    print(f"Fine-tuned model saved to {final_output_dir}")
+    print(f"Fine-tuned model saved")
     return final_output_dir

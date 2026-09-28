@@ -21,18 +21,12 @@ EARLY_STOPPING_PATIENCE = 3
 EARLY_STOPPING_THRESHOLD = 0.005
 world_size = torch.cuda.device_count()            
 
-# Paths to pre‑trained models (output from training comparison)
-PRETRAINED_BASELINE = OUTPUT_BASELINE + "/final"
-# Output directories for fine‑tuned versions
-OUTPUT_FT_BASELINE = PRETRAINED_BASELINE + "/final"
-
-# Paths to pre‑trained models (output from training comparison)
-PRETRAINED_DYNMOE_BASE = OUTPUT_DYNMOE_BASE + "/final"
-# Output directories for fine‑tuned versions
-OUTPUT_FT_DYNMOE_BASE = PRETRAINED_DYNMOE_BASE + "/final"
-
-# Paths to pre‑trained models (output from training comparison)
+# Fine-tuning config
+PRETRAINED_BASELINE       = OUTPUT_BASELINE        + "/final"   # checkpoint to load from
+PRETRAINED_DYNMOE_BASE    = OUTPUT_DYNMOE_BASE     + "/final"
 PRETRAINED_DYNMOE_ROUTING = OUTPUT_DEEPSEEK_DYNMOE + "/final"
-# Output directories for fine‑tuned versions
-OUTPUT_FT_DYNMOE_ROUTING = PRETRAINED_DYNMOE_ROUTING + "/final"
 
+# Output dirs — the /final is appended by save_finetuned_model, not here
+OUTPUT_FT_BASELINE       = OUTPUT_BASELINE        + "/baseline-ft"
+OUTPUT_FT_DYNMOE_BASE    = OUTPUT_DYNMOE_BASE     + "/dynmoe-baseline-ft"
+OUTPUT_FT_DYNMOE_ROUTING = OUTPUT_DEEPSEEK_DYNMOE + "/dynmoe-routing-ft"

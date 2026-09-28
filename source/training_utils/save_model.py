@@ -26,5 +26,5 @@ def save_model_and_tokenizer(trainer, output_dir):
     # 3. Save the tokenizer (already attached to the Trainer).
     trainer.tokenizer.save_pretrained(final_output_dir)
 
-    print(f"Model saved to {final_output_dir}")
+    print(f"Model saved")
     return final_output_dir
