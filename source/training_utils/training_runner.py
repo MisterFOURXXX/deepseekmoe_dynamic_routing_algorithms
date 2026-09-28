@@ -57,9 +57,9 @@ ds_config = {
         "offload_param": {"device": "cpu", "pin_memory": True},
         "overlap_comm": True,
         "contiguous_gradients": True,
-        "reduce_bucket_size": 5e8,
-        "stage3_prefetch_bucket_size": 5e8,
-        "stage3_param_persistence_threshold": 1e6,
+        "reduce_bucket_size": "auto",
+        "stage3_prefetch_bucket_size": "auto",
+        "stage3_param_persistence_threshold": "auto",
         "stage3_max_live_parameters": 1e9,
         "stage3_max_reuse_distance": 1e9,
         "stage3_gather_16bit_weights_on_model_save": True
