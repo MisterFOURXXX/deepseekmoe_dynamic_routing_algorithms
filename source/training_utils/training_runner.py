@@ -139,8 +139,7 @@ def _prepare_data(
     data_collator = DataCollatorForLanguageModeling(
         tokenizer=tokenizer,
         mlm=False,
-        pad_to_multiple_of=8,
-        dtype=torch.float16 
+        pad_to_multiple_of=8
     )
 
     return tokenizer, tokenized_datasets, data_collator
@@ -161,7 +160,6 @@ def train_model(ModelClass, ConfigClass, output_dir, is_dynmoe=False,
     model = ModelClass(config)
     model.resize_token_embeddings(len(tokenizer))
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = model.half()                  ########
     model = model.to(device)
     model.config.use_cache = False
     model.train()
@@ -184,7 +182,15 @@ def train_model(ModelClass, ConfigClass, output_dir, is_dynmoe=False,
         warmup_steps=WARMUP_STEPS,
         warmup_ratio=0.05,
         lr_scheduler_type="cosine",
-        fp16=True,
+        fp16=True,                     # ds_config["fp16"]["enabled"] = True
+        bf16=False,                    # never enable both; DS will error otherwise
+        fp16_full_eval=False,          # keep eval in fp32 for stability
+        half_precision_backend="auto", # let Trainer pick amp/cuda (recommended w/ DS)
+        # NOTE: do NOT set fp16_opt_level – deprecated in transformers 4.44 and
+        #       only used by the apex backend.  DeepSpeed handles its own O-level.
+        # NOTE: do NOT try to mirror loss_scale / initial_scale_power / hysteresis /
+        #       min_loss_scale here – those live only in ds_config and are consumed
+        #       directly by DeepSpeed.
         logging_steps=10,
         save_strategy="epoch",
         eval_strategy="epoch",
