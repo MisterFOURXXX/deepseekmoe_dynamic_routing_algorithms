@@ -162,6 +162,7 @@ def fine_tune_model(pretrained_path, output_dir,
     print("\nModel Summary:")
     print(f" Total parameters: {total_params:,}")
     print(f" Trainable parameters: {trainable_params:,}")
+    print(f" Model architecture:\n{model}\n")
 
     training_args = TrainingArguments(
         output_dir=output_dir,
@@ -174,7 +175,15 @@ def fine_tune_model(pretrained_path, output_dir,
         warmup_steps=WARMUP_STEPS,
         warmup_ratio=0.05,
         lr_scheduler_type="cosine",
-        fp16=True,
+        fp16=True,                     # ds_config["fp16"]["enabled"] = True
+        bf16=False,                    # never enable both; DS will error otherwise
+        fp16_full_eval=False,          # keep eval in fp32 for stability
+        half_precision_backend="auto", # let Trainer pick amp/cuda (recommended w/ DS)
+        # NOTE: do NOT set fp16_opt_level – deprecated in transformers 4.44 and
+        #       only used by the apex backend.  DeepSpeed handles its own O-level.
+        # NOTE: do NOT try to mirror loss_scale / initial_scale_power / hysteresis /
+        #       min_loss_scale here – those live only in ds_config and are consumed
+        #       directly by DeepSpeed.
         logging_steps=10,
         save_strategy="epoch",
         eval_strategy="epoch",
@@ -231,12 +240,6 @@ def fine_tune_model(pretrained_path, output_dir,
     print(f"Final validation loss: {final_loss:.4f}")
     print(f"Validation Perplexity: {perplexity:.2f}")
 
-    final_output_dir = os.path.join(output_dir, "final")
-    unwrapped = trainer.model.module if hasattr(trainer.model, 'module') else trainer.model
-    unwrapped.save_pretrained(final_output_dir)
-    tokenizer.save_pretrained(final_output_dir)
-    print(f"Fine‑tuned model saved to {final_output_dir}")
-
     save_finetuned_model(trainer, output_dir)
     print_finetuning_summary(resource_monitor, moemetrics, train_result, eval_results, perplexity)
 
@@ -254,4 +257,5 @@ def run_fine_tuning(pretrained_path, output_dir,
                               data_file_path, split_ratio, random_seed,
                               tokenizer, tokenized_datasets, data_collator)
     cleanup_trainer(trainer)
+    
     clear_cached_data()   # frees the dataset cache

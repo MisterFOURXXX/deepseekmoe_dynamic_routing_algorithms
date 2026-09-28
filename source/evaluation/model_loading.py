@@ -3,57 +3,77 @@ sys.path.append("..")
 
 import os
 import json
-import torch
 from transformers import AutoTokenizer
 
-from ..deepseek_baseline.config import DeepseekConfig as BaselineConfig
-from ..DYNMoE_baseline.config import DynMoEConfig as DYNMoEBaseConfig
-from ..deepseek_dynamics_routing.config import DeepseekConfig as DynmoeConfig
+from ..deepseek_baseline.config       import DeepseekConfig as BaselineConfig
+from ..DYNMoE_baseline.config          import DynMoEConfig   as DYNMoEBaseConfig
+from ..deepseek_dynamics_routing.config import DeepseekConfig as RoutingConfig
 
-from ..deepseek_baseline.model import DeepseekForCausalLM as BaselineModel
+from ..deepseek_baseline.model         import DeepseekForCausalLM as BaselineModel
+from ..DYNMoE_baseline.model           import DynMoEForCausalLM as DYNMoEModel
 from ..deepseek_dynamics_routing.model import DeepseekForCausalLM as RoutingModel
-from ..DYNMoE_baseline.model import DynMoEForCausalLM as DynMoEModel
+
+
+# Keys that only the DeepSeek-with-DYNMoE-routing config exposes.
+# The plain DeepSeekMoE baseline does NOT define any of these.
+_ROUTING_MARKERS = (
+    "max_active_k",
+    "min_active_k",
+    "threshold_init",
+    "router_bias_update_rate",
+    "router_sync_interval",
+)
+
+
+def _resolve_classes(model_path: str):
+    """
+    Pick the correct (ConfigClass, ModelClass) pair for a saved checkpoint
+    by inspecting its config.json.
+
+    Mapping
+    -------
+    model_type == "dynmoe"                              -> DynMoE baseline (Phi-2 based)
+    model_type == "deepseek" + any routing marker       -> DeepSeekMoE + DYNMoE Top-Any routing
+    model_type == "deepseek" (no routing markers)       -> DeepSeekMoE baseline
+    """
+    config_path = os.path.join(model_path, "config.json")
+    with open(config_path, "r") as f:
+        cfg = json.load(f)
+
+    model_type = cfg.get("model_type", "")
+
+    if model_type == "dynmoe":
+        return DYNMoEBaseConfig, DYNMoEModel
+
+    if model_type == "deepseek":
+        if any(k in cfg for k in _ROUTING_MARKERS):
+            return RoutingConfig, RoutingModel
+        return BaselineConfig, BaselineModel
+
+    raise ValueError(
+        f"Unknown model_type '{model_type}' in {config_path}. "
+        f"Expected 'deepseek' or 'dynmoe'."
+    )
 
 
 def load_model_and_tokenizer(model_path):
-    # Determine which config and model classes to use
-    if "dynmoe" in model_path:
-        ConfigClass = DYNMoEBaseConfig
-        ModelClass = DynMoEModel
-    elif "routing" in model_path:
-        ConfigClass = DynmoeConfig
-        ModelClass = RoutingModel
-    else:
-        ConfigClass = BaselineConfig
-        ModelClass = BaselineModel
+    """
+    Load a fine-tuned checkpoint for evaluation.
 
-    config = ConfigClass()
-    model = ModelClass(config)
+    The correct (config, model) pair is selected from config.json, then the
+    custom architecture is rebuilt and the fine-tuned weights are applied via
+    ``from_pretrained``.  This is the "recompile with fine-tuned weights"
+    step — the class must be instantiated *before* the state_dict is applied,
+    otherwise DeepSpeed ZeRO-3 shards or pruned experts won't map correctly.
+    """
+    ConfigClass, ModelClass = _resolve_classes(model_path)
 
-    config_path = os.path.join(model_path, "config.json")
-    with open(config_path, "r") as f:
-        config_dict = json.load(f)
+    # Build the architecture from the saved config, then load the weights.
+    config = ConfigClass.from_pretrained(model_path)
+    model  = ModelClass.from_pretrained(model_path, config=config)
 
-    # Determine which model class to instantiate
-    if config_dict.get("model_type") == "dynmoe":
-        ModelClass = DynMoEModel
-    else:
-        # model_type is "deepseek" – differentiate baseline from routing
-        if "max_routed_experts" in config_dict:
-            ModelClass = RoutingModel
-        else:
-            ModelClass = BaselineModel
-
-    model = ModelClass.from_pretrained(model_path)
+    # Tokenizer lives in the same checkpoint directory and already carries
+    # pad_token / eos_token from training.
     tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True)
-
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
-
-    # Sanity check: print total parameters to confirm successful loading
-    total_params = sum(p.numel() for p in model.parameters())
-    print(f"Loaded model with {total_params:,} parameters.")
-    if total_params == 0:
-        raise RuntimeError("Model has zero parameters – loading likely failed!")
 
     return model, tokenizer

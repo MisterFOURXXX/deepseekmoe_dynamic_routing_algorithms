@@ -16,6 +16,6 @@ EVAL_PARAMS = {
 
 # Default paths revise follow your storage path
 # Point to the actual fine-tuned checkpoints
-OUTPUT_FT_BASELINE = OUTPUT_FT_BASELINE + "/fine_tuned_final"
-OUTPUT_FT_DYNMOE_BASE = OUTPUT_FT_DYNMOE_BASE + "/fine_tuned_final"
-OUTPUT_FT_DYNMOE_ROUTING = OUTPUT_FT_DYNMOE_ROUTING + "/fine_tuned_final"
+OUTPUT_FT_BASELINE       = OUTPUT_FT_BASELINE       + "/final"
+OUTPUT_FT_DYNMOE_BASE    = OUTPUT_FT_DYNMOE_BASE    + "/final"
+OUTPUT_FT_DYNMOE_ROUTING = OUTPUT_FT_DYNMOE_ROUTING + "/final"
