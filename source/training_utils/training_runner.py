@@ -139,7 +139,8 @@ def _prepare_data(
     data_collator = DataCollatorForLanguageModeling(
         tokenizer=tokenizer,
         mlm=False,
-        pad_to_multiple_of=8
+        pad_to_multiple_of=8,
+        dtype=torch.float16 
     )
 
     return tokenizer, tokenized_datasets, data_collator
