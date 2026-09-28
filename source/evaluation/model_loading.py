@@ -14,8 +14,6 @@ from ..DYNMoE_baseline.model           import DynMoEForCausalLM as DYNMoEModel
 from ..deepseek_dynamics_routing.model import DeepseekForCausalLM as RoutingModel
 
 
-# Keys that only the DeepSeek-with-DYNMoE-routing config exposes.
-# The plain DeepSeekMoE baseline does NOT define any of these.
 _ROUTING_MARKERS = (
     "max_active_k",
     "min_active_k",
@@ -59,12 +57,6 @@ def _resolve_classes(model_path: str):
 def load_model_and_tokenizer(model_path):
     """
     Load a fine-tuned checkpoint for evaluation.
-
-    The correct (config, model) pair is selected from config.json, then the
-    custom architecture is rebuilt and the fine-tuned weights are applied via
-    ``from_pretrained``.  This is the "recompile with fine-tuned weights"
-    step — the class must be instantiated *before* the state_dict is applied,
-    otherwise DeepSpeed ZeRO-3 shards or pruned experts won't map correctly.
     """
     ConfigClass, ModelClass = _resolve_classes(model_path)
 
@@ -72,8 +64,7 @@ def load_model_and_tokenizer(model_path):
     config = ConfigClass.from_pretrained(model_path)
     model  = ModelClass.from_pretrained(model_path, config=config)
 
-    # Tokenizer lives in the same checkpoint directory and already carries
-    # pad_token / eos_token from training.
+    # Tokenizer lives in the same checkpoint directory and already defined
     tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True)
 
     return model, tokenizer

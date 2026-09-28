@@ -14,17 +14,14 @@ def save_finetuned_model(trainer, output_dir):
     Uses Trainer.save_model() so DeepSpeed ZeRO-3 weights are gathered
     correctly before writing to disk (stage3_gather_16bit_weights_on_model_save).
     """
-    # 1. Match the fine-tuning code's directory name
+    # Match the fine-tuning code's directory name
     final_output_dir = os.path.join(output_dir, "final")
     os.makedirs(final_output_dir, exist_ok=True)
 
-    # 2. Save the model via the Trainer (DeepSpeed-aware).
-    #    Do NOT call unwrapped.save_pretrained() here – with ZeRO-3 that
-    #    would only write the local shard, producing an unusable checkpoint.
+    # Save the model via the Trainer (DeepSpeed-aware).
     trainer.save_model(final_output_dir)
 
-    # Ensure the tokenizer is saved (Trainer.save_model usually does this,
-    #    but we do it explicitly for safety and future compatibility).
+    # Ensure the tokenizer is saved 
     trainer.tokenizer.save_pretrained(final_output_dir)
     print(f"Fine-tuned model saved")
     return final_output_dir

@@ -179,11 +179,6 @@ def fine_tune_model(pretrained_path, output_dir,
         bf16=False,                    # never enable both; DS will error otherwise
         fp16_full_eval=False,          # keep eval in fp32 for stability
         half_precision_backend="auto", # let Trainer pick amp/cuda (recommended w/ DS)
-        # NOTE: do NOT set fp16_opt_level – deprecated in transformers 4.44 and
-        #       only used by the apex backend.  DeepSpeed handles its own O-level.
-        # NOTE: do NOT try to mirror loss_scale / initial_scale_power / hysteresis /
-        #       min_loss_scale here – those live only in ds_config and are consumed
-        #       directly by DeepSpeed.
         logging_steps=10,
         save_strategy="epoch",
         eval_strategy="epoch",
