@@ -111,7 +111,7 @@ If there is any package import errors when running notebook experiments, please 
 cd ./deepseekmoe_dynamic_routing_algorithms            # Ex. cd /kaggle/working/deepseekmoe_dynamic_routing_algorithms
 python -m pip install --upgrade pip setuptools wheel
 # Uninstall previous version to prevent import errors and prevent conflicts
-python -m pip uninstall -y transformers huggingface-hub torch torchvision torchaudio
+python -m pip uninstall -y transformers huggingface-hub tokenizers torch torchvision torchaudio 
 # PyTorch with CUDA
 python -m pip install torch==2.11.0 torchvision==0.26.0 torchaudio==2.11.0
 # Python packages

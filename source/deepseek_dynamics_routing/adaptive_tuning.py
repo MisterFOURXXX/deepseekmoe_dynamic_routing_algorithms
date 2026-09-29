@@ -10,7 +10,8 @@ from .config import (
     PRUNE_THRESHOLD,
     MIN_ACTIVE_EXPERTS,
     BIAS_UPDATE_INTERVAL,
-    CLEAR_CACHE_EVERY
+    CLEAR_CACHE_EVERY,
+    WARMUP_STEPS
 )
 
 # AdaptiveExpertTuningCallback: Trainer callback for expert pool resizing
@@ -35,12 +36,14 @@ class AdaptiveExpertTuningCallback(TrainerCallback):
         min_active_experts: int = MIN_ACTIVE_EXPERTS,
         bias_update_interval: int = BIAS_UPDATE_INTERVAL,
         clear_cache_every: int = CLEAR_CACHE_EVERY,
+        warmup_steps: int = WARMUP_STEPS,
     ):
         self.audit_steps = audit_steps
         self.prune_threshold = prune_threshold
         self.min_active_experts = min_active_experts
         self.bias_update_interval = bias_update_interval
         self.clear_cache_every = clear_cache_every
+        self.warmup_steps = warmup_steps
 
     def on_step_end(self, args, state, control, model=None, **kwargs):
         """
@@ -57,7 +60,8 @@ class AdaptiveExpertTuningCallback(TrainerCallback):
             for module in unwrapped.modules():
                 if hasattr(module, "update_loss_free_bias"):
                     module.update_loss_free_bias()
-        if state.global_step % self.audit_steps == 0:
+        if state.global_step > self.warmup_steps and \
+            state.global_step % self.audit_steps == 0:
             unwrapped = model.module if hasattr(model, "module") else model
             self._audit_and_soft_prune(unwrapped)
         # Periodically clear cache to reduce fragmentation
