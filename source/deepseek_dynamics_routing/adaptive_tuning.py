@@ -17,6 +17,12 @@ from .config import (
 # AdaptiveExpertTuningCallback: Trainer callback for expert pool resizing
 class AdaptiveExpertTuningCallback(TrainerCallback):
     """
+    Trainer callback that drives all DYNMoE state updates at step boundaries:
+      * loss-free bias update (Eq. 11) every `bias_update_interval` steps
+      * adaptive threshold update every `bias_update_interval` steps
+      * soft pruning every `audit_steps` steps (after warmup)
+      * CUDA cache clearing every `clear_cache_every` steps
+
     Hugging Face Trainer callback that triggers adaptive expert tuning
     (soft pruning / auto-tuning) every `audit_steps` training steps
     (Section 3.4).
@@ -46,45 +52,38 @@ class AdaptiveExpertTuningCallback(TrainerCallback):
         self.warmup_steps = warmup_steps
 
     def on_step_end(self, args, state, control, model=None, **kwargs):
-        """
-        Trainer callback hook executed at the end of every training step.
-
-        - Applies loss-free bias updates every `bias_update_interval` steps (Eq. 11).
-        - Runs adaptive expert tuning / soft pruning every `audit_steps` steps (Section 3.4).
-        - Clears CUDA cache periodically to reduce memory fragmentation.
-        """
         if state.global_step == 0 or model is None:
             return
+
+        unwrapped = model.module if hasattr(model, "module") else model
+
+        # ── Bias update + adaptive threshold (same cadence) ───────────
         if state.global_step % self.bias_update_interval == 0:
-            unwrapped = model.module if hasattr(model, "module") else model
             for module in unwrapped.modules():
                 if hasattr(module, "update_loss_free_bias"):
                     module.update_loss_free_bias()
+                if hasattr(module, "update_adaptive_threshold"):
+                    module.update_adaptive_threshold()
+
+        # ── Soft pruning (after warmup) ───────────────────────────────
         if state.global_step > self.warmup_steps and \
-            state.global_step % self.audit_steps == 0:
-            unwrapped = model.module if hasattr(model, "module") else model
+           state.global_step % self.audit_steps == 0:
             self._audit_and_soft_prune(unwrapped)
-        # Periodically clear cache to reduce fragmentation
+
         if state.global_step % self.clear_cache_every == 0:
             torch.cuda.empty_cache()
 
     @torch.no_grad()
     def _audit_and_soft_prune(self, model):
-        """
-        Performs soft pruning of routed experts based on their relative usage
-        (Section 3.4).
-
-        Any expert whose relative usage falls below `prune_threshold` is marked
-        inactive and its gate-projection row is zeroed. The number of active
-        experts is never reduced below `min_active_experts`.
-        """
         for module in model.modules():
-            if hasattr(module, "is_active") and hasattr(module, "routing_counts") and hasattr(module, "num_experts"):
+            if hasattr(module, "is_active") and \
+               hasattr(module, "routing_counts") and \
+               hasattr(module, "num_experts"):
                 counts = module.routing_counts.float()
-                total = counts.sum()
+                total  = counts.sum()
                 if total == 0:
                     continue
-                usage = counts / total
+                usage  = counts / total
                 active = module.is_active.sum().item()
                 for i in range(module.num_experts):
                     if active <= self.min_active_experts:
