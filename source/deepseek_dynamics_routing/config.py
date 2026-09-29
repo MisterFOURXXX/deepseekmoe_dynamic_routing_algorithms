@@ -18,7 +18,7 @@ MIN_ROUTED_EXPERTS   = 1        # lower bound on routed expert pool (Section 3.4
 MAX_ACTIVE_K         = 6        # maximum activated routed experts per token # 6, 8
 MIN_ACTIVE_K         = 1        # Minimum threshold for zero-activation guard (test-time safeguard, Eq. 5)
 DYNMOE_THRESHOLD_INIT = -0.85    # initial raw threshold G_j before sigmoid (Eq. 2/3) # -0.95, -0.75, -0.65
-BIAS_UPDATE_RATE     = 0.0005   # Learning rate for bias updates (Eq. 11) # 0.00005, 0.0005, 0.0001
+BIAS_UPDATE_RATE     = 0.00005   # Learning rate for bias updates (Eq. 11) # 0.00005, 0.0005, 0.0001
 TARGET_ACTIVE_K       = 1.5        # Target number of activated experts per token (Eq. 4) # 1.0
 THRESHOLD_UPDATE_RATE = 0.005    #0.05
 
