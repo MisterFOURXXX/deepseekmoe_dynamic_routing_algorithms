@@ -328,17 +328,14 @@ class DeepseekMLP(nn.Module):
 # DYNMoE Top-Any gating mechanism with adaptive expert tuning (soft pruning)
 class FusedMoEGate(nn.Module):
     """
-    DYNMoE Top-Any gate. Forward pass is deterministic and side-effect free
-    w.r.t. parameters used in the routing decision, so gradient checkpointing
-    can safely recompute it.
-
-    Adaptive threshold control is delegated to AdaptiveExpertTuningCallback,
-    which calls `update_adaptive_threshold()` at step boundaries.
+    DYNMoE Top-Any gate with a proportional adaptive-threshold controller.
+    Forward is side-effect free w.r.t. routing parameters → safe for
+    gradient checkpointing.
     """
 
     def __init__(self, config):
         super().__init__()
-        self.d_model = config.hidden_size
+        self.d_model    = config.hidden_size
         self.num_experts = config.n_routed_experts
         self.n_routed_experts = config.n_routed_experts
         self.max_k = getattr(config, "max_active_k", 2)
@@ -346,29 +343,23 @@ class FusedMoEGate(nn.Module):
 
         self.bias_update_rate = getattr(config, "router_bias_update_rate", 0.02)
         self.aux_loss_alpha   = getattr(config, "aux_loss_alpha", 0.01)
-        self.threshold_init   = getattr(config, "threshold_init", 0.5)
 
-        self.target_active_k       = getattr(config, "target_active_k", 1.5)
-        self.threshold_update_rate = getattr(config, "threshold_update_rate", 0.01)
+        # Start BELOW the natural gate output so max_k binds first.
+        self.threshold_init   = getattr(config, "threshold_init", -0.5)
 
-        # Gating weight matrix W_g (Eq. 1)
+        self.target_active_k          = getattr(config, "target_active_k", 2.0)
+        self.threshold_update_rate    = getattr(config, "threshold_update_rate", 0.3)
+
         self.gate_proj = nn.Linear(self.d_model, self.num_experts, bias=False)
-
-        # Trainable per-expert raw thresholds G_j (Eq. 3)
         self.thresholds = nn.Parameter(
             torch.full((self.num_experts,), self.threshold_init)
         )
 
-        # Loss-free balancing biases b_i (Eq. 11)
-        self.register_buffer("expert_bias", torch.zeros(self.num_experts))
-        self.register_buffer("is_active", torch.ones(self.num_experts, dtype=torch.bool))
+        self.register_buffer("expert_bias",    torch.zeros(self.num_experts))
+        self.register_buffer("is_active",      torch.ones(self.num_experts, dtype=torch.bool))
         self.register_buffer("routing_counts", torch.zeros(self.num_experts, dtype=torch.float32))
-        self.register_buffer("usage_ema", torch.ones(self.num_experts) / self.num_experts)
-
-        # Smooth estimate of avg_k_r — updated in forward via no_grad, only read
-        # by the callback. Does NOT influence the routing decision, so it is
-        # checkpoint-safe.
-        self.register_buffer("avg_k_running", torch.tensor(float(self.target_active_k)))
+        self.register_buffer("usage_ema",      torch.ones(self.num_experts) / self.num_experts)
+        self.register_buffer("avg_k_running",  torch.tensor(float(self.target_active_k)))
 
         self._pending_aux_loss = None
 
@@ -377,19 +368,17 @@ class FusedMoEGate(nn.Module):
         x_flat = x.reshape(-1, self.d_model)
         T = x_flat.shape[0]
 
-        # ── Affinity (Eq. 1) ──────────────────────────────────────────
         logits = self.gate_proj(x_flat) + self.expert_bias
         logits = logits.masked_fill(~self.is_active, -1e9)
 
-        # ── Gating decision (Eq. 2–3) ─────────────────────────────────
         probs  = torch.sigmoid(logits)
-        thresh = torch.sigmoid(self.thresholds)          # ← read-only here
+        thresh = torch.sigmoid(self.thresholds)
         hard_active = (probs > thresh).to(logits.dtype)
 
         soft_signal = probs - thresh
         ste_active  = hard_active + soft_signal - soft_signal.detach()
 
-        # ── max_k cap (Eq. 5) ─────────────────────────────────────────
+        # max_k cap
         counts = hard_active.sum(dim=-1, keepdim=True)
         over = counts > self.max_k
         if over.any():
@@ -398,15 +387,14 @@ class FusedMoEGate(nn.Module):
             hard_active = torch.where(over, capped, hard_active)
             ste_active  = torch.where(over, capped, ste_active)
 
-        # ── min_k guard (Eq. 5) ───────────────────────────────────────
-        none_active = hard_active.sum(dim=-1, keepdim=True) < self.min_k
-        if none_active.any():
+        # min_k guard
+        under = hard_active.sum(dim=-1, keepdim=True) < self.min_k
+        if under.any():
             top1_idx = logits.argmax(dim=-1, keepdim=True)
             fallback = torch.zeros_like(hard_active).scatter_(1, top1_idx, 1.0)
-            hard_active = torch.where(none_active, fallback, hard_active)
-            ste_active  = torch.where(none_active, fallback, ste_active)
+            hard_active = torch.where(under, fallback, hard_active)
+            ste_active  = torch.where(under, fallback, ste_active)
 
-        # ── Stats: buffers only, no parameter mutation ────────────────
         if self.training:
             with torch.no_grad():
                 batch_usage = hard_active.mean(dim=0)
@@ -416,22 +404,17 @@ class FusedMoEGate(nn.Module):
                 avg_k = hard_active.sum(dim=-1).mean()
                 self.avg_k_running.mul_(0.9).add_(avg_k, alpha=0.1)
 
-            # ── Auxiliary loss (Eq. 8–10) ─────────────────────────────
             tokens_per_expert = hard_active.sum(dim=0)
             target = T / self.num_experts
-            load_loss = torch.mean(
-                (tokens_per_expert - target) ** 2
-            ) / (target ** 2 + 1e-12)
+            load_loss = torch.mean((tokens_per_expert - target) ** 2) / (target ** 2 + 1e-12)
 
             W = self.gate_proj.weight
             gram = torch.matmul(W, W.t())
-            eye = torch.eye(self.num_experts, device=W.device, dtype=W.dtype)
-            diversity_loss = torch.norm(gram - eye, p="fro") ** 2 \
-                             / (self.num_experts ** 2 + 1e-12)
+            eye  = torch.eye(self.num_experts, device=W.device, dtype=W.dtype)
+            diversity_loss = torch.norm(gram - eye, p="fro") ** 2 / (self.num_experts ** 2 + 1e-12)
 
             self._pending_aux_loss = self.aux_loss_alpha * (load_loss + 0.05 * diversity_loss)
 
-        # ── Softmax over active experts (Eq. 5–6) ─────────────────────
         masked_logits = logits.masked_fill(hard_active == 0, -1e9)
         weights = F.softmax(masked_logits, dim=-1)
         weights = torch.nan_to_num(weights, nan=0.0) * ste_active
@@ -445,7 +428,6 @@ class FusedMoEGate(nn.Module):
 
     @torch.no_grad()
     def update_loss_free_bias(self):
-        """Eq. 11: b_i <- b_i - eta * sign(c_i - c_bar). Called by the callback."""
         total = self.routing_counts.sum()
         if total > 0:
             mean_count = total / self.num_experts
@@ -456,18 +438,16 @@ class FusedMoEGate(nn.Module):
     @torch.no_grad()
     def update_adaptive_threshold(self):
         """
-        Called by AdaptiveExpertTuningCallback at step boundaries.
-        Adjusts trainable thresholds so that avg_k_r tracks target_active_k.
+        Proportional controller: closes ~30% of the gap per call, using
+        the smoothed estimate avg_k_running produced by forward().
 
-        Moved OUT of forward() because mutating self.thresholds mid-forward
-        breaks gradient checkpointing (the recomputed forward would route
-        differently than the saved forward, causing shape mismatches).
+        Removed from forward() so checkpoint recompute sees the same
+        thresholds -> fixes the CheckpointError.
         """
         avg_k = float(self.avg_k_running.item())
-        if avg_k > self.target_active_k + 0.1:
-            self.thresholds.data.add_(self.threshold_update_rate)
-        elif avg_k < self.target_active_k - 0.1:
-            self.thresholds.data.sub_(self.threshold_update_rate)
+        err   = avg_k - self.target_active_k
+        # scale is the per-step step size; sign of err dictates direction
+        self.thresholds.data.add_(self.threshold_update_rate * err)
 
 # Memory-efficient SwiGLU FFN used in DeepSeekMoE and OptimizedDeepSeekMoE
 class DeepseekMoEFFN(nn.Module):

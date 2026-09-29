@@ -57,7 +57,6 @@ class AdaptiveExpertTuningCallback(TrainerCallback):
 
         unwrapped = model.module if hasattr(model, "module") else model
 
-        # ── Bias update + adaptive threshold (same cadence) ───────────
         if state.global_step % self.bias_update_interval == 0:
             for module in unwrapped.modules():
                 if hasattr(module, "update_loss_free_bias"):
@@ -65,7 +64,6 @@ class AdaptiveExpertTuningCallback(TrainerCallback):
                 if hasattr(module, "update_adaptive_threshold"):
                     module.update_adaptive_threshold()
 
-        # ── Soft pruning (after warmup) ───────────────────────────────
         if state.global_step > self.warmup_steps and \
            state.global_step % self.audit_steps == 0:
             self._audit_and_soft_prune(unwrapped)
@@ -75,20 +73,40 @@ class AdaptiveExpertTuningCallback(TrainerCallback):
 
     @torch.no_grad()
     def _audit_and_soft_prune(self, model):
+        """
+        Prune only experts whose relative usage is far below uniform AND
+        only when the router has settled into a non-degenerate regime.
+        """
         for module in model.modules():
-            if hasattr(module, "is_active") and \
-               hasattr(module, "routing_counts") and \
-               hasattr(module, "num_experts"):
-                counts = module.routing_counts.float()
-                total  = counts.sum()
-                if total == 0:
-                    continue
-                usage  = counts / total
-                active = module.is_active.sum().item()
-                for i in range(module.num_experts):
-                    if active <= self.min_active_experts:
-                        break
-                    if module.is_active[i] and usage[i] < self.prune_threshold:
-                        module.is_active[i] = False
-                        module.gate_proj.weight[i].zero_()
-                        active -= 1
+            if not (hasattr(module, "is_active")
+                    and hasattr(module, "routing_counts")
+                    and hasattr(module, "num_experts")
+                    and hasattr(module, "avg_k_running")):
+                continue
+
+            counts = module.routing_counts.float()
+            total  = counts.sum()
+            if total == 0:
+                continue
+
+            # Guard: do not prune while avg_k is still well below target.
+            # The router has not yet converged, so pruning would be premature.
+            avg_k = float(module.avg_k_running.item())
+            target = getattr(module, "target_active_k", 2.0)
+            if avg_k < 0.75 * target:
+                continue
+
+            N = module.num_experts
+            uniform = 1.0 / N
+            # Prune only experts below a fraction of uniform usage
+            absolute_threshold = self.prune_threshold * uniform
+
+            usage  = counts / total
+            active = module.is_active.sum().item()
+            for i in range(N):
+                if active <= self.min_active_experts:
+                    break
+                if module.is_active[i] and usage[i] < absolute_threshold:
+                    module.is_active[i] = False
+                    module.gate_proj.weight[i].zero_()
+                    active -= 1
