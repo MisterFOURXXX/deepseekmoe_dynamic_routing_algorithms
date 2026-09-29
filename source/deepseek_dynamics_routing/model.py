@@ -56,8 +56,6 @@ from .config import (
     MAX_ACTIVE_K,
     DYNMOE_THRESHOLD_INIT, 
     BIAS_UPDATE_RATE, 
-    TARGET_ACTIVE_K,
-    THRESHOLD_UPDATE_RATE
 )
 from .config import AUDIT_STEPS as ADAPTIVE_AUDIT_STEPS  
 
@@ -328,126 +326,154 @@ class DeepseekMLP(nn.Module):
 # DYNMoE Top-Any gating mechanism with adaptive expert tuning (soft pruning)
 class FusedMoEGate(nn.Module):
     """
-    DYNMoE Top-Any gate with a proportional adaptive-threshold controller.
-    Forward is side-effect free w.r.t. routing parameters → safe for
-    gradient checkpointing.
-    """
+    Implements the DYNMoE Top-Any gating mechanism (Eq. 2–5) integrated into
+    DeepSeekMoE, with dynamic expert activation and adaptive tuning support
+    (soft pruning, Section 3.4).
 
+    Key features:
+        - Sigmoid affinity / gating decision (Eq. 2–3)
+        - Trainable per-expert thresholds G_j (Eq. 3)
+        - Dynamic number of activated experts per token k_r (Eq. 4)
+        - Test-time safeguard: max-k cap and zero-activation top-1 fallback (Eq. 5)
+        - Straight-through estimator for binary gates
+        - L2 load-balancing + diversity auxiliary loss (Eq. 8–10)
+        - Loss-free balancing bias update (Eq. 11)
+        - Soft pruning via AdaptiveExpertTuningCallback (Section 3.4)
+    """
     def __init__(self, config):
         super().__init__()
-        self.d_model    = config.hidden_size
+        self.d_model = config.hidden_size
         self.num_experts = config.n_routed_experts
         self.n_routed_experts = config.n_routed_experts
         self.max_k = getattr(config, "max_active_k", 2)
         self.min_k = getattr(config, "min_active_k", 1)
+        # ---- Tune these for better balance ----
+        self.bias_update_rate = getattr(config, "router_bias_update_rate", 0.02)   # faster correction
+        self.aux_loss_alpha = getattr(config, "aux_loss_alpha", 0.1)              # stronger balancing
+        self.threshold_init = getattr(config, "threshold_init", -1.5)             # even lower threshold
 
-        self.bias_update_rate = getattr(config, "router_bias_update_rate", 0.02)
-        self.aux_loss_alpha   = getattr(config, "aux_loss_alpha", 0.01)
-
-        # Start BELOW the natural gate output so max_k binds first.
-        self.threshold_init   = getattr(config, "threshold_init", -0.5)
-
-        self.target_active_k          = getattr(config, "target_active_k", 2.0)
-        self.threshold_update_rate    = getattr(config, "threshold_update_rate", 0.3)
-
+        # Gating weight matrix W_g (Eq. 1 / Eq. 2)
         self.gate_proj = nn.Linear(self.d_model, self.num_experts, bias=False)
-        self.thresholds = nn.Parameter(
-            torch.full((self.num_experts,), self.threshold_init)
-        )
 
-        self.register_buffer("expert_bias",    torch.zeros(self.num_experts))
-        self.register_buffer("is_active",      torch.ones(self.num_experts, dtype=torch.bool))
+        # Trainable per-expert raw thresholds G_j (Eq. 3)
+        self.thresholds = nn.Parameter(torch.full((self.num_experts,), self.threshold_init))
+
+        # Loss-free balancing biases b_i (Eq. 11) and adaptive-tuning state
+        self.register_buffer("expert_bias", torch.zeros(self.num_experts))
+        self.register_buffer("is_active", torch.ones(self.num_experts, dtype=torch.bool))
         self.register_buffer("routing_counts", torch.zeros(self.num_experts, dtype=torch.float32))
-        self.register_buffer("usage_ema",      torch.ones(self.num_experts) / self.num_experts)
-        self.register_buffer("avg_k_running",  torch.tensor(float(self.target_active_k)))
+        self.register_buffer("usage_ema", torch.ones(self.num_experts) / self.num_experts)
 
         self._pending_aux_loss = None
+        self._step_counter = 0
 
     def forward(self, x):
+        """
+        Forward pass of the Top-Any gate.
+
+        Computes:
+            - Raw logits / affinity (Eq. 1–2)
+            - Sigmoid probabilities and thresholds (Eq. 2)
+            - Binary gating decisions a_{i,t} (Eq. 3)
+            - Dynamic activated expert count k_r (Eq. 4)
+            - Test-time safeguard: max-k cap and zero-activation top-1 fallback (Eq. 5)
+            - Straight-through estimator for training
+            - Routing records and auxiliary loss (Eq. 8–10)
+
+        Returns:
+            weights: softmax-normalised routing weights over active experts,
+                     shaped [batch, seq_len, num_experts].
+        """
         bsz, seq_len, _ = x.shape
         x_flat = x.reshape(-1, self.d_model)
         T = x_flat.shape[0]
 
+        # Affinity computation (Eq. 1–2)
         logits = self.gate_proj(x_flat) + self.expert_bias
         logits = logits.masked_fill(~self.is_active, -1e9)
 
-        probs  = torch.sigmoid(logits)
+        # Gating decision (Eq. 3): p_t = sigmoid(logits), tau = sigmoid(G)
+        probs = torch.sigmoid(logits)
         thresh = torch.sigmoid(self.thresholds)
         hard_active = (probs > thresh).to(logits.dtype)
 
+        # Straight-through estimator: continuous signal p - tau during backward
         soft_signal = probs - thresh
-        ste_active  = hard_active + soft_signal - soft_signal.detach()
+        ste_active = hard_active + (soft_signal - soft_signal.detach())
+        ste_active = ste_active.clamp(0.0, 1.0)
 
-        # max_k cap
+        # Enforce max_k (test-time safeguard, Eq. 5)
         counts = hard_active.sum(dim=-1, keepdim=True)
         over = counts > self.max_k
         if over.any():
             _, topk_idx = torch.topk(logits, k=self.max_k, dim=-1)
             capped = torch.zeros_like(hard_active).scatter_(1, topk_idx, 1.0)
             hard_active = torch.where(over, capped, hard_active)
-            ste_active  = torch.where(over, capped, ste_active)
+            ste_active = torch.where(over, capped, ste_active)
 
-        # min_k guard
-        under = hard_active.sum(dim=-1, keepdim=True) < self.min_k
-        if under.any():
+        # Zero-activation fallback (test-time safeguard, Eq. 5)
+        none_active = hard_active.sum(dim=-1, keepdim=True) == 0
+        if none_active.any():
             top1_idx = logits.argmax(dim=-1, keepdim=True)
             fallback = torch.zeros_like(hard_active).scatter_(1, top1_idx, 1.0)
-            hard_active = torch.where(under, fallback, hard_active)
-            ste_active  = torch.where(under, fallback, ste_active)
+            hard_active = torch.where(none_active, fallback, hard_active)
+            ste_active = torch.where(none_active, fallback, ste_active)
 
         if self.training:
+            self._step_counter += 1
             with torch.no_grad():
+                # Accumulate routing records for adaptive tuning / soft pruning (Section 3.4)
                 batch_usage = hard_active.mean(dim=0)
                 self.usage_ema.mul_(0.9).add_(batch_usage, alpha=0.1)
                 self.routing_counts.add_(hard_active.sum(dim=0))
 
-                avg_k = hard_active.sum(dim=-1).mean()
-                self.avg_k_running.mul_(0.9).add_(avg_k, alpha=0.1)
-
-            tokens_per_expert = hard_active.sum(dim=0)
+            # Stronger load balancing loss (Eq. 8–10) 
+            tokens_per_expert = hard_active.sum(dim=0)          # [E]
             target = T / self.num_experts
+            # L2 load balancing loss (Eq. 8)
             load_loss = torch.mean((tokens_per_expert - target) ** 2) / (target ** 2 + 1e-12)
 
+            # Orthogonality / diversity loss (Eq. 9)
             W = self.gate_proj.weight
             gram = torch.matmul(W, W.t())
-            eye  = torch.eye(self.num_experts, device=W.device, dtype=W.dtype)
+            eye = torch.eye(self.num_experts, device=W.device, dtype=W.dtype)
             diversity_loss = torch.norm(gram - eye, p="fro") ** 2 / (self.num_experts ** 2 + 1e-12)
 
+            # Total auxiliary loss (Eq. 10)
             self._pending_aux_loss = self.aux_loss_alpha * (load_loss + 0.05 * diversity_loss)
 
+        # Softmax only over active experts (Eq. 5–6)
         masked_logits = logits.masked_fill(hard_active == 0, -1e9)
         weights = F.softmax(masked_logits, dim=-1)
         weights = torch.nan_to_num(weights, nan=0.0) * ste_active
 
         return weights.view(bsz, seq_len, self.num_experts)
 
-    def pop_aux_loss(self):
+    # pop_aux_loss and update_loss_free_bias remain the same
+    def pop_aux_loss(self) -> Optional[torch.Tensor]:
+        """
+        Returns and clears the pending auxiliary loss computed in the last
+        forward pass (Eq. 8–10).
+        """
         loss = self._pending_aux_loss
         self._pending_aux_loss = None
         return loss
 
     @torch.no_grad()
     def update_loss_free_bias(self):
+        """
+        Loss-free balancing bias update (Eq. 11):
+            b_i <- b_i - eta * sign(c_i - c_bar)
+
+        Uses accumulated routing counts c_i and the mean count c_bar.
+        This adjusts expert biases without affecting gradients.
+        """
         total = self.routing_counts.sum()
         if total > 0:
             mean_count = total / self.num_experts
             diff = self.routing_counts - mean_count
             self.expert_bias.sub_(self.bias_update_rate * torch.sign(diff))
             self.routing_counts.zero_()
-
-    @torch.no_grad()
-    def update_adaptive_threshold(self):
-        """
-        Proportional controller: closes ~30% of the gap per call, using
-        the smoothed estimate avg_k_running produced by forward().
-
-        Removed from forward() so checkpoint recompute sees the same
-        thresholds -> fixes the CheckpointError.
-        """
-        avg_k = float(self.avg_k_running.item())
-        err   = avg_k - self.target_active_k
-        # scale is the per-step step size; sign of err dictates direction
-        self.thresholds.data.add_(self.threshold_update_rate * err)
 
 # Memory-efficient SwiGLU FFN used in DeepSeekMoE and OptimizedDeepSeekMoE
 class DeepseekMoEFFN(nn.Module):
@@ -468,8 +494,11 @@ class OptimizedDeepSeekMoE(nn.Module):
     """
     Memory-optimized MoE layer with DYNMoE Top-Any routing integrated into
     DeepSeekMoE (Section 3.2, Eq. 5–7).
-    """
 
+    The shared experts are fused into a single SwiGLU GEMM. Routed experts are
+    independent SwiGLU modules. The router is a `FusedMoEGate`, which produces
+    dynamic per-token expert activation and auxiliary loss.
+    """
     def __init__(self, config):
         super().__init__()
         self.config = config
@@ -478,21 +507,35 @@ class OptimizedDeepSeekMoE(nn.Module):
         self.max_k = getattr(config, "max_active_k", 2)
         self.d_model = config.hidden_size
 
+        # Shared Experts Path - fused into single GEMM (unchanged DeepSeekMoE design)
         shared_inter = config.moe_intermediate_size * self.num_shared
         self.shared_experts = DeepseekMoEFFN(config, intermediate_size=shared_inter)
 
+        # Dynamic Router: DYNMoE Top-Any gate
         self.gate = FusedMoEGate(config)
 
+        # Routed Experts (fine-grained routed sub-experts)
         self.experts = nn.ModuleList(
             [DeepseekMoEFFN(config) for _ in range(self.num_experts)]
         )
 
-    def forward(self, hidden_states: torch.Tensor):
+    def forward(self, hidden_states: torch.Tensor) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        """
+        MoE forward pass (Section 3.2, Eq. 7).
+
+        Computes:
+            - Shared-expert output
+            - Top-Any routing weights and auxiliary loss from `FusedMoEGate`
+            - Weighted sum of activated routed experts
+            - Residual connection outside this module (in DecoderLayer)
+        """
         bsz, seq_len, d_model = hidden_states.shape
         T = bsz * seq_len
 
+        # Shared experts forward pass
         shared_out = self.shared_experts(hidden_states)
 
+        # Get gating weights
         routing_weights = self.gate(hidden_states)
         aux_loss = self.gate.pop_aux_loss()
 
@@ -501,22 +544,23 @@ class OptimizedDeepSeekMoE(nn.Module):
 
         routed_output = torch.zeros_like(flat_hidden)
 
-        # ── No drop: capacity is the total token count ────────────────
-        # With max_k as a hard upper bound, the worst-case load on a single
-        # expert is `T` tokens. Any smaller cap silently discards tokens
-        # (which is what caused the ROUGE regression).
-        capacity = T
+        # Capacity
+        capacity = max(2, int(math.ceil((T * self.max_k) / self.num_experts)) + 2)
 
         for e in range(self.num_experts):
             if not self.gate.is_active[e]:
                 continue
 
             expert_weights = flat_weights[:, e]
-            mask = expert_weights > 1e-6
+            
+            # Simple threshold-based selection
+            mask = expert_weights > 1e-4
             idx = mask.nonzero(as_tuple=True)[0]
+            
             if idx.numel() == 0:
                 continue
 
+            # Cap tokens
             if idx.numel() > capacity:
                 w_sub = expert_weights[idx]
                 _, topk_local_idx = torch.topk(w_sub, k=capacity, sorted=False)
