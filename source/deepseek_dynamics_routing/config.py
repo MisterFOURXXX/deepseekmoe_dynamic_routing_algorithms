@@ -165,7 +165,7 @@ class DeepseekConfig(PretrainedConfig):
         first_k_dense_replace=0,
         norm_topk_prob=True,
         scoring_func="softmax",
-        aux_loss_alpha=0.001, # 0.001
+        aux_loss_alpha=0.0001, # 0.001
         seq_aux=True,
         # Asynchronous Tuning & Bias Updates (Section 3.3.2 / 3.4)
         router_bias_update_rate=BIAS_UPDATE_RATE, # Loss-free load balancing step size
