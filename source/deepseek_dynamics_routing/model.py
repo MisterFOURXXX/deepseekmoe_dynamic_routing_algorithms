@@ -56,6 +56,8 @@ from .config import (
     MAX_ACTIVE_K,
     DYNMOE_THRESHOLD_INIT, 
     BIAS_UPDATE_RATE, 
+    TARGET_ACTIVE_K,
+    THRESHOLD_UPDATE_RATE
 )
 from .config import AUDIT_STEPS as ADAPTIVE_AUDIT_STEPS  
 
