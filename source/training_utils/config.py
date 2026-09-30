@@ -16,6 +16,6 @@ EARLY_STOPPING_THRESHOLD = 0.001
 world_size = torch.cuda.device_count()         
 
 # Config for output directories to save models and checkpoints here, according to README.md, we will save the models in the following directories.
-OUTPUT_BASELINE = "/kaggle/working/deepseekmoe_dynamic_routing_algorithms/checkpoints/baseline"
-OUTPUT_DYNMOE_BASE = "/kaggle/working/deepseekmoe_dynamic_routing_algorithms/checkpoints/dynmoe_baseline"
-OUTPUT_DEEPSEEK_DYNMOE = "/kaggle/working/deepseekmoe_dynamic_routing_algorithms/checkpoints/dynmoe_routing"
+OUTPUT_BASELINE = "/content/deepseekmoe_dynamic_routing_algorithms/checkpoints/baseline"
+OUTPUT_DYNMOE_BASE = "/content/deepseekmoe_dynamic_routing_algorithms/checkpoints/dynmoe_baseline"
+OUTPUT_DEEPSEEK_DYNMOE = "/content/deepseekmoe_dynamic_routing_algorithms/checkpoints/dynmoe_routing"
