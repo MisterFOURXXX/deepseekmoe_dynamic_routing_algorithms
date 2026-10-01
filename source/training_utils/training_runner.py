@@ -50,7 +50,7 @@ ds_config = {
     "train_batch_size": "auto",
     "train_micro_batch_size_per_gpu": "auto",
     "gradient_accumulation_steps": "auto",
-    "fp16": {"enabled": True, "loss_scale": 0, "initial_scale_power": 16, "hysteresis": 2, "min_loss_scale": 1},
+    "bf16": {"enabled": True},
     "zero_optimization": {
         "stage": 3,
         "offload_optimizer": {"device": "cpu", "pin_memory": True},
@@ -182,10 +182,11 @@ def train_model(ModelClass, ConfigClass, output_dir, is_dynmoe=False,
         warmup_steps=WARMUP_STEPS,
         warmup_ratio=0.05,
         lr_scheduler_type="cosine",
-        fp16=True,                     # ds_config["fp16"]["enabled"] = True
-        bf16=False,                    # never enable both; DS will error otherwise
-        fp16_full_eval=False,          # keep eval in fp32 for stability
-        half_precision_backend="auto", # let Trainer pick amp/cuda (recommended w/ DS)
+        fp16=False,               # was True  — disable fp16
+        bf16=True,                # was False — enable bf16
+        bf16_full_eval=False,     # keep eval in fp32 for stability (optional)
+        fp16_full_eval=False,     # make sure this stays off too
+        half_precision_backend="auto",   # unchanged
         logging_steps=10,
         save_strategy="epoch",
         eval_strategy="epoch",

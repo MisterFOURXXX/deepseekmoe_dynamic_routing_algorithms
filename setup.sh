@@ -8,25 +8,18 @@ cd "$SCRIPT_DIR"
 REPO_ROOT="/content/deepseekmoe_dynamic_routing_algorithms"
 
 #Navigating to Repository Root
-cd "$REPO_ROOT"
-
-# System dependencies
-#sed -i 's/archive.ubuntu.com/mirrors.kernel.org/g' /etc/apt/sources.list
-sudo apt-get update -qq && sudo apt-get install -y libaio-dev -qq
-# sudo add-apt-repository ppa:deadsnakes/ppa -y
-# sudo apt install -y python3.11 python3.11-venv python3.11-dev
-# sudo apt update
-
-python -m pip uninstall -y transformers torch tokenizers torchvision torchaudio huggingface-hub
-
-python -m pip install --upgrade pip setuptools wheel
-
+cd "$REPO_ROOT" 
+# Install system dependencies
+sudo apt-get update -qq
+sudo apt-get install -y libaio-dev curl python3-dev -qq
+# Clean existing environment packages (or uninstall old torch/transformers)
+python3 -m pip uninstall -y transformers torch tokenizers torchvision torchaudio huggingface-hub || true
+# Upgrade core build tools
+python3 -m pip install --upgrade pip setuptools wheel
 # PyTorch with CUDA
-python -m pip install torch==2.11.0 torchvision==0.26.0 torchaudio==2.11.0 #--index-url https://download.pytorch.org/whl/cu128
-
+python3 -m pip install torch==2.11.0 torchvision==0.26.0 torchaudio==2.11.0  #--index-url https://download.pytorch.org/whl/cu128
 # Python packages
-python -m pip install -r requirements.txt
-
+python3 -m pip install -r requirements.txt
 echo "Environment setup complete!"
 
 # Move into the dataset folder of your project
