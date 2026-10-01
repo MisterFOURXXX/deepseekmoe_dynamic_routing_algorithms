@@ -370,50 +370,82 @@ class DeepseekMoE(nn.Module):
         super().__init__()
         self.config = config
         self.num_experts_per_tok = config.num_experts_per_tok
-        self.experts = nn.ModuleList([DeepseekMLP(config, intermediate_size = config.moe_intermediate_size) for i in range(config.n_routed_experts)])
+        self.experts = nn.ModuleList([
+            DeepseekMLP(config, intermediate_size=config.moe_intermediate_size)
+            for i in range(config.n_routed_experts)
+        ])
         self.gate = MoEGate(config)
         if config.n_shared_experts is not None:
             intermediate_size = config.moe_intermediate_size * config.n_shared_experts
-            self.shared_experts = DeepseekMLP(config=config, intermediate_size = intermediate_size)
-    
+            self.shared_experts = DeepseekMLP(config=config, intermediate_size=intermediate_size)
+
     def forward(self, hidden_states):
         identity = hidden_states
         orig_shape = hidden_states.shape
         topk_idx, topk_weight, aux_loss = self.gate(hidden_states)
         hidden_states = hidden_states.view(-1, hidden_states.shape[-1])
         flat_topk_idx = topk_idx.view(-1)
+
         if self.training:
             hidden_states = hidden_states.repeat_interleave(self.num_experts_per_tok, dim=0)
+            # Destination tensor: dtype of the (possibly fp32) residual stream.
             y = torch.empty_like(hidden_states)
             for i, expert in enumerate(self.experts):
-                y[flat_topk_idx == i] = expert(hidden_states[flat_topk_idx == i])
-            y = (y.view(*topk_weight.shape, -1) * topk_weight.unsqueeze(-1)).sum(dim=1)
-            y =  y.view(*orig_shape)
+                mask = flat_topk_idx == i
+                if mask.any():
+                    # FIX: cast expert output (bf16 under autocast) back to y.dtype (fp32)
+                    # so index_put_ sees matching source/destination dtypes.
+                    expert_out = expert(hidden_states[mask])
+                    y[mask] = expert_out.to(y.dtype)
+                # If mask is empty, expert output would be an empty tensor anyway;
+                # skipping avoids a useless (and possibly dtype-problematic) call.
+            # Cast topk_weight to y.dtype to avoid an unintended fp32 promotion of
+            # the residual stream via the subsequent add in the decoder layer.
+            y = (y.view(*topk_weight.shape, -1) *
+                 topk_weight.unsqueeze(-1).to(y.dtype)).sum(dim=1)
+            y = y.view(*orig_shape)
             y = AddAuxiliaryLoss.apply(y, aux_loss)
         else:
-            y = self.moe_infer(hidden_states, flat_topk_idx, topk_weight.view(-1, 1)).view(*orig_shape)
+            y = self.moe_infer(
+                hidden_states, flat_topk_idx, topk_weight.view(-1, 1)
+            ).view(*orig_shape)
+
         if self.config.n_shared_experts is not None:
-            y = y + self.shared_experts(identity)
+            # Shared experts are also Linear layers → same autocast story.
+            # Cast so `y + shared_out` keeps y's dtype (no silent upcast of residual stream).
+            shared_out = self.shared_experts(identity)
+            y = y + shared_out.to(y.dtype)
         return y
-    
+
     @torch.no_grad()
     def moe_infer(self, x, flat_expert_indices, flat_expert_weights):
+        # Cache starts in x's dtype (typically fp32 residual stream).
         expert_cache = torch.zeros_like(x)
         idxs = flat_expert_indices.argsort()
         tokens_per_expert = flat_expert_indices.bincount().cpu().numpy().cumsum(0)
         token_idxs = idxs // self.num_experts_per_tok
         for i, end_idx in enumerate(tokens_per_expert):
-            start_idx = 0 if i == 0 else tokens_per_expert[i-1]
+            start_idx = 0 if i == 0 else tokens_per_expert[i - 1]
             if start_idx == end_idx:
                 continue
             expert = self.experts[i]
             exp_token_idx = token_idxs[start_idx:end_idx]
             expert_tokens = x[exp_token_idx]
-            expert_out = expert(expert_tokens)
-            expert_out.mul_(flat_expert_weights[idxs[start_idx:end_idx]])
-            expert_cache.scatter_reduce_(0, exp_token_idx.view(-1, 1).repeat(1, x.shape[-1]), expert_out, reduce='sum')
-        return expert_cache
 
+            # FIX: cast expert output to the cache dtype before in-place ops.
+            expert_out = expert(expert_tokens).to(expert_cache.dtype)
+
+            # Cast the weights too, so `mul_` cannot silently up-cast or error.
+            weights = flat_expert_weights[idxs[start_idx:end_idx]].to(expert_out.dtype)
+            expert_out.mul_(weights)
+
+            expert_cache.scatter_reduce_(
+                0,
+                exp_token_idx.view(-1, 1).repeat(1, x.shape[-1]),
+                expert_out,
+                reduce='sum',
+            )
+        return expert_cache
 
 # Copied from transformers.models.llama.modeling_llama.repeat_kv
 def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:

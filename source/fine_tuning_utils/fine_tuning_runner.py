@@ -167,7 +167,7 @@ def fine_tune_model(pretrained_path, output_dir,
         learning_rate=LEARNING_RATE,
         weight_decay=WEIGHT_DECAY,
         warmup_steps=WARMUP_STEPS,
-        warmup_ratio=0.05,
+        warmup_ratio=0.03,
         lr_scheduler_type="cosine",
         fp16=False,               # was True  — disable fp16
         bf16=True,                # was False — enable bf16

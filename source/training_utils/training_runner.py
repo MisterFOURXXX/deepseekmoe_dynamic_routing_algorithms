@@ -180,6 +180,7 @@ def train_model(ModelClass, ConfigClass, output_dir, is_dynmoe=False,
         learning_rate=LEARNING_RATE,
         weight_decay=WEIGHT_DECAY,
         warmup_steps=WARMUP_STEPS,
+        max_grad_norm=1.0,
         warmup_ratio=0.05,
         lr_scheduler_type="cosine",
         fp16=False,               # was True  — disable fp16

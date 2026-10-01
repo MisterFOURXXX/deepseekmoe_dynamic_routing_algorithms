@@ -7,10 +7,10 @@ import torch
 MAX_SEQ_LEN = 256
 PER_DEVICE_BATCH = 8
 GRAD_ACCUM = 8
-LEARNING_RATE = 1e-6   #1e-4
+LEARNING_RATE = 8e-5   #1e-6
 NUM_EPOCHS = 5         # for testing, set to 100
 WARMUP_STEPS = 100
-WEIGHT_DECAY = 0.01
+WEIGHT_DECAY = 0.05
 EARLY_STOPPING_PATIENCE = 3
 EARLY_STOPPING_THRESHOLD = 0.001
 world_size = torch.cuda.device_count()         

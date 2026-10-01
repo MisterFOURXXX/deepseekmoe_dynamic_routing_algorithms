@@ -11,7 +11,10 @@ EVAL_PARAMS = {
     "max_seq_len": 256,
     "eval_batch_size": 8,
     "gen_max_new_tokens": 256,
-    "repetition_penalty": 1.35
+    "repetition_penalty": 1.1,
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "top_k": 50
 }
 
 # Default paths revise follow your storage path
