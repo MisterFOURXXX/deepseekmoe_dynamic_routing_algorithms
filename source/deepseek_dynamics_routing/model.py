@@ -440,7 +440,7 @@ class FusedMoEGate(nn.Module):
             diversity_loss = torch.norm(gram - eye, p="fro") ** 2 / (self.num_experts ** 2 + 1e-12)
 
             # Total auxiliary loss (Eq. 10)
-            self._pending_aux_loss = self.aux_loss_alpha * (load_loss + 0.1 * diversity_loss)            ############## raise diversity weight
+            self._pending_aux_loss = self.aux_loss_alpha * (load_loss + 0.05 * diversity_loss)            ############## raise diversity weight
 
         # Softmax only over active experts (Eq. 5–6)
         masked_logits = logits.masked_fill(hard_active == 0, -1e9)
