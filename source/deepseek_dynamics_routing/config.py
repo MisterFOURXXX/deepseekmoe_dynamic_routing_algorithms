@@ -14,10 +14,10 @@ CLEAR_CACHE_EVERY = 150          # memory-cache clearing interval (Section 3.4)
 # Routing Parameters Defaults (Sections 3.1 and 3.2)
 MAX_ROUTED_EXPERTS   = 8        # upper bound on routed expert pool (Section 3.4)
 MIN_ROUTED_EXPERTS   = 1        # lower bound on routed expert pool (Section 3.4)
-MAX_ACTIVE_K         = 6        # maximum activated routed experts per token # 8
+MAX_ACTIVE_K         = 6        # maximum activated routed experts per token 
 MIN_ACTIVE_K         = 1        # Minimum threshold for zero-activation guard (test-time safeguard, Eq. 5)
-DYNMOE_THRESHOLD_INIT = -1.35    # initial raw threshold G_j before sigmoid (Eq. 2/3) #-0.6,-0.9
-BIAS_UPDATE_RATE     = 0.000001   # Learning rate for bias updates (Eq. 11) #0.0001
+DYNMOE_THRESHOLD_INIT = -1.35    # initial raw threshold G_j before sigmoid (Eq. 2/3) 
+BIAS_UPDATE_RATE     = 0.00001   # Learning rate for bias updates (Eq. 11) 
 
 logger = logging.get_logger(__name__)
 
@@ -162,7 +162,7 @@ class DeepseekConfig(PretrainedConfig):
         first_k_dense_replace=0,
         norm_topk_prob=True,
         scoring_func="softmax",
-        aux_loss_alpha=0.005, 
+        aux_loss_alpha=0.003, 
         seq_aux=True,
         # Asynchronous Tuning & Bias Updates (Section 3.3.2 / 3.4)
         router_bias_update_rate=BIAS_UPDATE_RATE, # Loss-free load balancing step size

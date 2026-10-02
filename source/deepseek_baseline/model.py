@@ -393,14 +393,8 @@ class DeepseekMoE(nn.Module):
             for i, expert in enumerate(self.experts):
                 mask = flat_topk_idx == i
                 if mask.any():
-                    # FIX: cast expert output (bf16 under autocast) back to y.dtype (fp32)
-                    # so index_put_ sees matching source/destination dtypes.
                     expert_out = expert(hidden_states[mask])
                     y[mask] = expert_out.to(y.dtype)
-                # If mask is empty, expert output would be an empty tensor anyway;
-                # skipping avoids a useless (and possibly dtype-problematic) call.
-            # Cast topk_weight to y.dtype to avoid an unintended fp32 promotion of
-            # the residual stream via the subsequent add in the decoder layer.
             y = (y.view(*topk_weight.shape, -1) *
                  topk_weight.unsqueeze(-1).to(y.dtype)).sum(dim=1)
             y = y.view(*orig_shape)
@@ -411,8 +405,6 @@ class DeepseekMoE(nn.Module):
             ).view(*orig_shape)
 
         if self.config.n_shared_experts is not None:
-            # Shared experts are also Linear layers → same autocast story.
-            # Cast so `y + shared_out` keeps y's dtype (no silent upcast of residual stream).
             shared_out = self.shared_experts(identity)
             y = y + shared_out.to(y.dtype)
         return y
