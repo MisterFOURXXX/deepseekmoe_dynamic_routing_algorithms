@@ -1,28 +1,23 @@
+# ============================================================
+# training_utils/save_model.py
+# ============================================================
 import os
 import sys
 
-sys.path.append("..")  # only needed once
+sys.path.append("..") 
 
 def save_model_and_tokenizer(trainer, output_dir):
     """
     Save the training model and tokenizer.
-
-    Mirrors the convention of save_finetuned_model:
-      * checkpoint directory is  <output_dir>/final
-      * tokenizer is saved alongside the model
-
-    Uses Trainer.save_model() so DeepSpeed ZeRO-3 weights are gathered
-    correctly before writing to disk (stage3_gather_16bit_weights_on_model_save).
     """
-    # Match the fine-tuning code's directory name
     final_output_dir = os.path.join(output_dir, "final")
     os.makedirs(final_output_dir, exist_ok=True)
-
-    # Save the model via the Trainer (DeepSpeed-aware).
+    
+    # Save the model (DeepSpeed-aware if using DeepSpeed)
     trainer.save_model(final_output_dir)
+    tokenizer = getattr(trainer, "processing_class", None) or getattr(trainer, "tokenizer", None)
+    if tokenizer is not None:
+        tokenizer.save_pretrained(final_output_dir)
 
-    # Save the tokenizer
-    trainer.tokenizer.save_pretrained(final_output_dir)
-
-    print(f"Model saved")
+    print(f"\nModel and tokenizer successfully saved to: {final_output_dir}")
     return final_output_dir

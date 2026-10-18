@@ -1,24 +1,22 @@
-import sys
-sys.path.append("..")
+import os
 
-from ..fine_tuning_utils.config import (
-    OUTPUT_FT_BASELINE,
-    OUTPUT_FT_DYNMOE_BASE,
-    OUTPUT_FT_DYNMOE_ROUTING
-)
+DATASET_ROOT = "/content/deepseekmoe_dynamic_routing_algorithms/dataset"
+MAX_SEQ_LEN  = 512
 
+# EVAL_PARAMS - identical to the DeepSeekMoE evaluation code
 EVAL_PARAMS = {
-    "max_seq_len": 256,
-    "eval_batch_size": 8,
+    "max_seq_len":        512,
+    "eval_batch_size":    8,
     "gen_max_new_tokens": 256,
+    "gen_min_new_tokens": 1,
     "repetition_penalty": 1.1,
-    "temperature": 0.7,
-    "top_p": 0.9,
-    "top_k": 50
+    "num_beams":          1,
+    "do_sample":          False,
 }
 
-# Default paths revise follow your storage path
-# Point to the actual fine-tuned checkpoints
-OUTPUT_FT_BASELINE       = OUTPUT_FT_BASELINE       + "/final"
-OUTPUT_FT_DYNMOE_BASE    = OUTPUT_FT_DYNMOE_BASE    + "/final"
-OUTPUT_FT_DYNMOE_ROUTING = OUTPUT_FT_DYNMOE_ROUTING + "/final"
+# Default paths (Can be overridden by the runner)
+_VARIANT_PATHS = {
+    "deepseek_moe":        "./deepseek-moe-1b-checkpoints/final",
+    "deepseek_moe_dynmoe": "./deepseek-moe-dyn-1b-checkpoints/final",
+    "dynmoe":              "./dyn-1b-checkpoints-finetuned/final",
+}

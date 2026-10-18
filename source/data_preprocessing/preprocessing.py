@@ -1,232 +1,301 @@
+# ============================================================
+# Loads, samples, tokenizes, and saves each dataset to disk.
+# Paths come from config.py - this file defines none of them.
+# ============================================================
 import os
-import re
-import json
-import random
-import zipfile
-import contractions
-import dateparser
-from word2number import w2n
-from sklearn.model_selection import train_test_split
+os.environ["HF_DATASETS_DISABLE_DILL"]          = "1"
+os.environ["TOKENIZERS_PARALLELISM"]            = "false"
+os.environ["HF_DATASETS_DISABLE_PROGRESS_BARS"] = "1"
 
-from config import (
-    DEFAULT_EVAL_PATH,
-    DEFAULT_FINE_PATH,
-    DEFAULT_TRAIN_PATH,
-    DEFAULT_ZIP_PATH,
+from datasets import (
+    load_dataset, Dataset, Features, Value, Sequence,
+)
+from datasets.utils.logging import disable_progress_bar
+from transformers import AutoTokenizer
+from huggingface_hub import login
+
+from .config import (
+    HF_TOKEN,
+    TOKENIZER_NAME,
+    MAX_SEQ_LEN,
+    SAMPLE_RATIO,
+    BENCH_SAMPLE_RATIO,
+    AMBIGQA_MAX_EXAMPLES,
+    DATASET_ROOT,
+    PATHS,                      # <- the only place paths are defined
+    DEFAULT_TOKENIZER_PATH,
 )
 
-def load_and_preprocess_multiwoz(
-    zip_path=DEFAULT_ZIP_PATH,
-    sample_size=500, # None
-    train_ratio=0.5,
-    fine_ratio=0.3,
-    eval_ratio=0.2,
-    random_seed=42,
-    train_output_path=DEFAULT_TRAIN_PATH,
-    fine_output_path=DEFAULT_FINE_PATH,
-    eval_output_path=DEFAULT_EVAL_PATH
-):
-    # Extract and load raw data
-    destination_dir = "MultiWOZ-coref-extract"
-    dataset_dir = os.path.join(destination_dir, "MultiWOZ2_3")
-    data_file = os.path.join(dataset_dir, "data.json")
-    ontology_file = os.path.join(dataset_dir, "ontology.json")
-    dialogue_acts_file = os.path.join(dataset_dir, "dialogue_acts.json")
+disable_progress_bar()
 
-    os.makedirs(destination_dir, exist_ok=True)
-    if not os.path.exists(data_file):
-        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            zip_ref.extractall(destination_dir)
+# --- Auth ---
+login(token=HF_TOKEN)
 
-    with open(data_file, 'r') as f:
-        data = json.load(f)
-    with open(ontology_file, 'r') as f:
-        ontology = json.load(f)
-    with open(dialogue_acts_file, 'r') as f:
-        dialogue_acts = json.load(f)
+# --- Tokenizer (single save) ---
+os.makedirs(DEFAULT_TOKENIZER_PATH, exist_ok=True)
+tokenizer = AutoTokenizer.from_pretrained(
+    TOKENIZER_NAME, trust_remote_code=True, use_fast=True,
+)
+tokenizer.pad_token    = tokenizer.eos_token
+tokenizer.pad_token_id = tokenizer.eos_token_id
+tokenizer.save_pretrained(DEFAULT_TOKENIZER_PATH)
+print(f"Tokenizer saved to {DEFAULT_TOKENIZER_PATH}")
 
-    # Helper functions
-    def get_primary_domain(dialogue):
-        for key in ("new_goal", "goal"):
-            domains = [d for d in dialogue.get(key, {}) if d != "user_action" and isinstance(dialogue[key].get(d), dict)]
-            if domains:
-                return domains[0]
-        domains = set()
-        for turn in dialogue.get("log", []):
-            for domain in turn.get("metadata", {}):
-                if domain != "user_action" and isinstance(turn["metadata"].get(domain), dict):
-                    domains.add(domain)
-        return domains.pop() if domains else "unknown"
 
-    def normalize_dialogue_id(dialogue_id):
-        return dialogue_id[:-len('.json')] if dialogue_id.endswith('.json') else dialogue_id
-
-    # Build raw list
-    raw_data = []
-    for dialogue_id, dialogue in data.items():
-        raw_data.append({
-            "dialogue_id": dialogue_id,
-            "dialogue": dialogue,
-            "domain": get_primary_domain(dialogue),
-            "dialogue_acts": dialogue_acts.get(normalize_dialogue_id(dialogue_id), {}),
-            "ontology": ontology
-        })
-
-    # Sample if requested
-    if sample_size is not None and sample_size < len(raw_data):
-        raw_data = random.sample(raw_data, sample_size)
-
-    # Split into three parts (stratified by domain)
-    # First split: train_fine (train+fine) vs eval
-    train_fine_raw, eval_raw = train_test_split(
-        raw_data,
-        test_size=eval_ratio,
-        stratify=[d["domain"] for d in raw_data],
-        random_state=random_seed
-    )
-    # Second split: train vs fine (within train_fine)
-    # The proportion of fine within train_fine should be fine_ratio / (train_ratio + fine_ratio)
-    fine_proportion_within_train_fine = fine_ratio / (train_ratio + fine_ratio)
-    train_raw, fine_raw = train_test_split(
-        train_fine_raw,
-        test_size=fine_proportion_within_train_fine,
-        stratify=[d["domain"] for d in train_fine_raw],
-        random_state=random_seed
+def _dataset_saved(path):
+    return any(
+        os.path.exists(os.path.join(path, m))
+        for m in ("dataset_info.json", "state.json")
     )
 
-    print(f"Split sizes: Train={len(train_raw)}, Fine={len(fine_raw)}, Eval={len(eval_raw)}")
 
-    # Normalization functions
-    def normalize_general_text(text):
-        text = contractions.fix(text, slang=False)
-        text = re.sub(r'\s+', ' ', text).strip()
-        text = re.sub(r'([.?!,])', r' \1', text)
-        return text
+# --- Helpers ---
+def safe_sample(ds, ratio, min_n=1):
+    n = max(min_n, int(len(ds) * ratio))
+    return ds.shuffle(seed=42).select(range(min(n, len(ds))))
 
-    def normalize_time_in_text(text):
-        def time_repl_hhmm_ampm(match):
-            parsed = dateparser.parse(match.group(0))
-            return parsed.strftime('%H:%M') if parsed else match.group(0)
-        text = re.sub(r'\b(\d{1,2}:\d{2})\s*(am|pm)\b', time_repl_hhmm_ampm, text, flags=re.IGNORECASE)
-        text = re.sub(r'\b(\d{1,2})\s*(am|pm)\b', time_repl_hhmm_ampm, text, flags=re.IGNORECASE)
-        text = re.sub(r'\bnoon\b', '12:00', text, flags=re.IGNORECASE)
-        text = re.sub(r'\bmidday\b', '12:00', text, flags=re.IGNORECASE)
-        text = re.sub(r'\bmidnight\b', '00:00', text, flags=re.IGNORECASE)
-        return text
 
-    CURRENCY_SYMBOLS_MAP = {'£': 'GBP', '$': 'USD', '€': 'EUR', '¥': 'JPY', '₹': 'INR'}
-    CURRENCY_KEYWORDS_MAP = {
-        'pound': 'GBP', 'pounds': 'GBP', 'quid': 'GBP', 'gbp': 'GBP', 'sterling': 'GBP',
-        'dollar': 'USD', 'dollars': 'USD', 'buck': 'USD', 'bucks': 'USD', 'usd': 'USD',
-        'euro': 'EUR', 'euros': 'EUR', 'eur': 'EUR',
-        'yen': 'JPY', 'jpy': 'JPY',
-        'rupee': 'INR', 'rupees': 'INR', 'inr': 'INR',
-    }
-    ALL_CURRENCY_KEYWORDS_SORTED = sorted(CURRENCY_KEYWORDS_MAP.keys(), key=len, reverse=True)
-    ALL_CURRENCY_SYMBOLS_SORTED = sorted(CURRENCY_SYMBOLS_MAP.keys(), key=len, reverse=True)
-    NUMBER_WORDS_FOR_REGEX = (
-        r"zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|"
-        r"thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|"
-        r"thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|billion"
+def manual_tokenize(text_iter, max_len, batch_size=8192):
+    buf = []
+    for text in text_iter:
+        buf.append(text)
+        if len(buf) >= batch_size:
+            out = tokenizer(buf, truncation=True, max_length=max_len,
+                            padding=False, return_attention_mask=True)
+            for j in range(len(out["input_ids"])):
+                yield {"input_ids": out["input_ids"][j],
+                       "attention_mask": out["attention_mask"][j]}
+            buf = []
+    if buf:
+        out = tokenizer(buf, truncation=True, max_length=max_len,
+                        padding=False, return_attention_mask=True)
+        for j in range(len(out["input_ids"])):
+            yield {"input_ids": out["input_ids"][j],
+                   "attention_mask": out["attention_mask"][j]}
+
+
+LM_FEATURES = Features({
+    "input_ids":      Sequence(Value("int32")),
+    "attention_mask": Sequence(Value("int8")),
+})
+MC_FEATURES = Features({
+    "prompt":        Value("string"),
+    "choices":       Sequence(Value("string")),
+    "choice_labels": Sequence(Value("string")),
+    "label":         Value("string"),
+})
+QA_FEATURES = Features({
+    "prompt":  Value("string"),
+    "answers": Sequence(Value("string")),
+})
+
+
+# --- SlimPajama splits ---
+def build_slimpajama():
+    keys = ["slimpajama_train", "slimpajama_finetune",
+            "slimpajama_val", "slimpajama_test"]
+    if all(_dataset_saved(PATHS[k]) for k in keys):
+        print("SlimPajama splits already exist - skipping.")
+        return
+
+    print("Loading SlimPajama-6B ...")
+    sp = load_dataset(
+        "DKYoon/SlimPajama-6B", token=HF_TOKEN, streaming=False,
+        download_mode="reuse_dataset_if_exists",
     )
-    COMPLEX_NUMBER_WORDS_PATTERN = rf"\b((?:{NUMBER_WORDS_FOR_REGEX})(?:\s+(?:and\s+)?(?:{NUMBER_WORDS_FOR_REGEX}))*)\b"
+    drop = [c for c in ["__index_level_0__", "meta"]
+            if c in sp["train"].column_names]
+    if drop:
+        sp = sp.remove_columns(drop)
 
-    def normalize_currency_in_text(text):
-        def is_valid_number_word_sequence(s):
-            words = s.lower().split()
-            number_words_set = set(NUMBER_WORDS_FOR_REGEX.split('|'))
-            return all(w in number_words_set for w in words)
+    train_n = max(1, int(len(sp["train"])      * SAMPLE_RATIO))
+    val_n   = max(1, int(len(sp["validation"]) * 0.05))
+    test_n  = max(1, int(len(sp["test"])       * 0.05))
 
-        def word_num_keyword_replacer(match):
-            num_word_str = match.group(1)
-            currency_key_str = match.group(2).lower()
-            if is_valid_number_word_sequence(num_word_str):
-                try:
-                    num_val = w2n.word_to_num(num_word_str)
-                    currency_code = CURRENCY_KEYWORDS_MAP.get(currency_key_str, currency_key_str.upper())
-                    return f"{num_val} {currency_code}"
-                except ValueError:
-                    pass
-            return match.group(0)
+    train_sub = sp["train"].shuffle(seed=42).select(range(train_n))
+    val_sub   = sp["validation"].shuffle(seed=42).select(range(val_n))
+    test_sub  = sp["test"].shuffle(seed=42).select(range(test_n))
 
-        currency_keywords_regex = "|".join([re.escape(k) for k in ALL_CURRENCY_KEYWORDS_SORTED])
-        pattern = rf"({COMPLEX_NUMBER_WORDS_PATTERN})\s+({currency_keywords_regex})\b"
-        text = re.sub(pattern, word_num_keyword_replacer, text, flags=re.IGNORECASE)
-        for symbol in ALL_CURRENCY_SYMBOLS_SORTED:
-            code = CURRENCY_SYMBOLS_MAP[symbol]
-            text = re.sub(rf'{re.escape(symbol)}\s*(\d+\.?\d*)', rf'\1 {code}', text)
-            text = re.sub(rf'(\d+\.?\d*)\s*{re.escape(symbol)}', rf'\1 {code}', text)
-        for keyword in ALL_CURRENCY_KEYWORDS_SORTED:
-            code = CURRENCY_KEYWORDS_MAP[keyword]
-            text = re.sub(rf'(\d+\.?\d*)\s+{re.escape(keyword)}\b', rf'\1 {code}', text, flags=re.IGNORECASE)
-        text = re.sub(r'\s+', ' ', text).strip()
-        text = re.sub(r'(\d)([A-Z]{3}\b)', r'\1 \2', text)
-        text = re.sub(r'(\b[A-Z]{3})(\d)', r'\1 \2', text)
-        text = re.sub(r'\s+', ' ', text).strip()
-        return text
+    split_idx    = int(len(train_sub) * 0.6)
+    train_raw    = train_sub.select(range(split_idx))
+    finetune_raw = train_sub.select(range(split_idx, len(train_sub)))
 
-    # Process dialogues
-    def process_dialogue_turns(dialogue_data):
-        turns = dialogue_data.get("log", [])
-        processed_turns = []
-        for turn_idx, turn in enumerate(turns):
-            normalized_text = normalize_currency_in_text(
-                normalize_time_in_text(
-                    normalize_general_text(turn["text"])
-                )
-            )
-            processed_turns.append({
-                "turn_id": turn_idx,
-                "speaker": "user" if turn_idx % 2 == 0 else "system",
-                "text": normalized_text
-            })
-        return processed_turns
+    print(f"  Train    : {len(train_raw):,}")
+    print(f"  Finetune : {len(finetune_raw):,}")
+    print(f"  Val      : {len(val_sub):,}")
+    print(f"  Test     : {len(test_sub):,}")
 
-    def process_data(raw_data_subset):
-        return [{
-            "dialogue_id": item["dialogue_id"],
-            "domain": item["domain"],
-            "dialogue": process_dialogue_turns(item["dialogue"])
-        } for item in raw_data_subset]
+    for name, raw in [("slimpajama_train",    train_raw),
+                      ("slimpajama_finetune", finetune_raw),
+                      ("slimpajama_val",      val_sub),
+                      ("slimpajama_test",     test_sub)]:
+        print(f"Tokenizing {name} ({len(raw)}) ...")
+        ds = Dataset.from_generator(
+            lambda raw=raw: manual_tokenize(raw["text"], MAX_SEQ_LEN),
+            features=LM_FEATURES,
+        )
+        ds.save_to_disk(PATHS[name])
+        print(f"  Saved to {PATHS[name]}")
 
-    train_data = process_data(train_raw)
-    fine_data = process_data(fine_raw)
-    eval_data = process_data(eval_raw)
 
-    # Create User/System pairs from processed dialogues
-    def prepare_final_dataset(processed_dialogues):
-        sequences = []
-        for dialogue_item in processed_dialogues:
-            turns = dialogue_item["dialogue"]
-            for i in range(0, len(turns) - 1, 2):
-                if i + 1 < len(turns):
-                    user_turn = turns[i]
-                    system_turn = turns[i + 1]
-                    if user_turn["speaker"] == "user" and system_turn["speaker"] == "system":
-                        formatted_text = f"User: {user_turn['text']}\nSystem: {system_turn['text']}"
-                        sequences.append({"text": formatted_text})
-        return sequences
+# --- MiniPile ---
+def build_minipile():
+    if _dataset_saved(PATHS["minipile"]):
+        print("MiniPile already exists - skipping.")
+        return
+    print("Loading MiniPile ...")
+    mp = safe_sample(load_dataset("JeanKaddour/minipile", split="test"),
+                     BENCH_SAMPLE_RATIO)
+    ds = Dataset.from_generator(
+        lambda: manual_tokenize(mp["text"], MAX_SEQ_LEN),
+        features=LM_FEATURES,
+    )
+    ds.save_to_disk(PATHS["minipile"])
+    print(f"MiniPile ({len(ds)}) saved to {PATHS['minipile']}")
 
-    train_sequences = prepare_final_dataset(train_data)
-    fine_sequences = prepare_final_dataset(fine_data)
-    eval_sequences = prepare_final_dataset(eval_data)
 
-    # Save to files
-    def save_sequences_to_file(sequences, filename):
-        with open(filename, "w", encoding="utf-8") as f:
-            for seq in sequences:
-                f.write(seq["text"] + "\n")
+# --- ARC ---
+def build_arc():
+    if _dataset_saved(PATHS["arc"]):
+        print("ARC already exists - skipping.")
+        return
+    print("Loading ARC-Challenge ...")
+    arc = safe_sample(
+        load_dataset("allenai/ai2_arc", "ARC-Challenge", split="test"),
+        BENCH_SAMPLE_RATIO,
+    )
 
-    save_sequences_to_file(train_sequences, train_output_path)
-    save_sequences_to_file(fine_sequences, fine_output_path)
-    save_sequences_to_file(eval_sequences, eval_output_path)
+    def fmt(ex):
+        labels = list(ex["choices"]["label"])
+        texts  = list(ex["choices"]["text"])
+        prompt = f"Question: {ex['question']}\nChoices:\n"
+        for lab, txt in zip(labels, texts):
+            prompt += f"{lab}. {txt}\n"
+        return {"prompt": prompt + "Answer:",
+                "choices": texts,
+                "choice_labels": labels,
+                "label": ex["answerKey"]}
 
-    print(f"Saved: {len(train_sequences)} train, {len(fine_sequences)} fine, {len(eval_sequences)} eval")
+    ds = arc.map(fmt, remove_columns=arc.column_names,
+                 features=MC_FEATURES, num_proc=1)
+    ds.save_to_disk(PATHS["arc"])
+    print(f"ARC ({len(ds)}) saved to {PATHS['arc']}")
 
-    return train_sequences, fine_sequences, eval_sequences
+
+# --- RACE ---
+def build_race():
+    if _dataset_saved(PATHS["race"]):
+        print("RACE already exists - skipping.")
+        return
+    print("Loading RACE ...")
+    race = safe_sample(
+        load_dataset("ehovy/race", "all", split="test"),
+        BENCH_SAMPLE_RATIO,
+    )
+
+    def fmt(ex):
+        o = list(ex["options"])
+        prompt = (
+            f"Article: {ex['article']}\n"
+            f"Question: {ex['question']}\n"
+            f"Options:\nA) {o[0]}\nB) {o[1]}\nC) {o[2]}\nD) {o[3]}\n"
+            f"Answer:"
+        )
+        return {"prompt": prompt,
+                "choices": o,
+                "choice_labels": ["A", "B", "C", "D"],
+                "label": ex["answer"]}
+
+    ds = race.map(fmt, remove_columns=race.column_names,
+                  features=MC_FEATURES, num_proc=1)
+    ds.save_to_disk(PATHS["race"])
+    print(f"RACE ({len(ds)}) saved to {PATHS['race']}")
+
+
+# --- TriviaQA ---
+def build_triviaqa():
+    if _dataset_saved(PATHS["triviaqa"]):
+        print("TriviaQA already exists - skipping.")
+        return
+    print("Loading TriviaQA (mandarjoshi/trivia_qa, rc.nocontext, validation) ...")
+    tr = safe_sample(
+        load_dataset("mandarjoshi/trivia_qa", "rc.nocontext", split="validation"),
+        BENCH_SAMPLE_RATIO,
+    )
+
+    def fmt(ex):
+        raw = list(ex["answer"].get("aliases", [])) + [ex["answer"].get("value", "")]
+        answers = list({a.strip() for a in raw if a and a.strip()}) or [""]
+        return {"prompt": f"Question: {ex['question']}\nAnswer:",
+                "answers": answers}
+
+    ds = tr.map(fmt, remove_columns=tr.column_names,
+                features=QA_FEATURES, num_proc=1)
+    ds.save_to_disk(PATHS["triviaqa"])
+    print(f"TriviaQA ({len(ds)}) saved to {PATHS['triviaqa']}")
+
+
+# --- AmbigQA ---
+def _flatten_answers(value):
+    if isinstance(value, str):
+        s = value.strip()
+        return [s] if s else []
+    if isinstance(value, (list, tuple)):
+        out = []
+        for item in value:
+            out.extend(_flatten_answers(item))
+        return out
+    return []
+
+
+def _collect_ambigqa_answers(example):
+    annotations = example["annotations"]
+    answers = set()
+    for i, ann_type in enumerate(annotations["type"]):
+        if ann_type == "singleAnswer":
+            answers.update(_flatten_answers(annotations["answer"][i]))
+        else:
+            qa_pair = annotations["qaPairs"][i]
+            answers.update(_flatten_answers(qa_pair["answer"]))
+    answers.update(_flatten_answers(example["nq_answer"]))
+    return sorted(answers) or [""]
+
+
+def build_ambigqa():
+    if _dataset_saved(PATHS["ambigqa"]):
+        print("AmbigQA already exists - skipping.")
+        return
+
+    print("Loading AmbigQA (sewon/ambig_qa, full, validation) ...")
+    full = load_dataset("sewon/ambig_qa", "full", split="validation")
+    if len(full) > AMBIGQA_MAX_EXAMPLES:
+        full = full.shuffle(seed=42).select(range(AMBIGQA_MAX_EXAMPLES))
+    print(f"  Using {len(full)} validation examples")
+
+    records = [
+        {
+            "prompt":  f"Question: {ex['question'].strip()}\nAnswer:",
+            "answers": _collect_ambigqa_answers(ex),
+        }
+        for ex in full
+    ]
+    ds = Dataset.from_list(records, features=QA_FEATURES)
+    ds.save_to_disk(PATHS["ambigqa"])
+    print(f"AmbigQA ({len(ds)}) saved to {PATHS['ambigqa']}")
 
 
 if __name__ == "__main__":
-    print("Starting Data Preprocessing....")
-    load_and_preprocess_multiwoz()
-    print("Data Preprocessing Complete!")
+    build_slimpajama()
+    build_minipile()
+    build_arc()
+    build_race()
+    build_triviaqa()
+    build_ambigqa()
+
+    print("\n" + "=" * 60)
+    print("All tokenized datasets saved under:", DATASET_ROOT)
+    print("=" * 60)
+    for name, path in PATHS.items():
+        marker = "tokenizer_config.json" if name == "tokenizer" else "dataset_info.json"
+        status = "OK" if os.path.exists(os.path.join(path, marker)) else "MISSING"
+        print(f"  {status:7s} {name:24s} {path}")

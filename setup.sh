@@ -22,13 +22,5 @@ python3 -m pip install torch==2.11.0 torchvision==0.26.0 torchaudio==2.11.0  #--
 python3 -m pip install -r requirements.txt
 echo "Environment setup complete!"
 
-# Move into the dataset folder of your project
-cd "$REPO_ROOT/dataset"
-
-# Clone the MultiWOZ coreference repository
-git clone https://github.com/lexmen318/MultiWOZ-coref.git
-
-echo "Download dataset complete!"
-
 # Restart kernel to ensure all changes take effect
 exit 0
