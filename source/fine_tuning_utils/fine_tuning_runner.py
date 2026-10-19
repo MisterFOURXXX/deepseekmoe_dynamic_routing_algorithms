@@ -37,9 +37,19 @@ from ..data_preprocessing import (
 )
 from ..memory_utils import cleanup_trainer, clear_cached_data
 
+# Model imports
+from ..deepseek_baseline.config import DeepseekConfig as BaselineConfig
+from ..deepseek_baseline.model import DeepseekForCausalLM as BaselineModel
+
+from ..DYNMoE_baseline.config import DynMoEConfig as DYNMoEBaseConfig
+from ..DYNMoE_baseline.model import DynMoEForCausalLM as DYNMoEBaseModel
+
 # Adaptive tuning imports
 from ..DYNMoE_baseline.adaptive_tuning import AdaptiveExpertTuningCallback as DYNMoEBaseCallback
 from ..DYNMoE_baseline.adaptive_tuning import ADAPTIVE_AUDIT_STEPS as DYNMoE_BASE_ADAPTIVE_AUDIT_STEPS
+
+from ..deepseek_dynamics_routing.config import DeepseekConfig as DynmoeConfig
+from ..deepseek_dynamics_routing.model import DeepseekForCausalLM as DynmoeModel
 
 from ..deepseek_dynamics_routing.adaptive_tuning import AdaptiveExpertTuningCallback as DynmoeRoutingCallback
 from ..deepseek_dynamics_routing.config import (
@@ -68,11 +78,11 @@ def _class_uses_dynmoe(cls):
 
 
 def fine_tune_model(pretrained_path, output_dir):
-    # Load Model and Tokenizer
+    # ---- 1. Load Model and Tokenizer ----
     print(f"Loading pretrained model from {pretrained_path} ...")
     model, tokenizer = load_model_and_tokenizer(pretrained_path)
 
-    # Load Pre-tokenized Datasets from Disk
+    # ---- 2. Load Pre-tokenized Datasets from Disk ----
     print(f"Loading train dataset from {DEFAULT_FINE_PATH} ...")
     finetune_dataset = load_from_disk(DEFAULT_FINE_PATH)
     print(f"Loading val dataset from {DEFAULT_VAL_PATH} ...")
@@ -82,7 +92,7 @@ def fine_tune_model(pretrained_path, output_dir):
         tokenizer=tokenizer, mlm=False, pad_to_multiple_of=8
     )
 
-    # Setup Model
+    # ---- 3. Setup Model ----
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model = model.to(device)
     model.config.use_cache = False
@@ -98,7 +108,7 @@ def fine_tune_model(pretrained_path, output_dir):
     print(f"  Trainable parameters : {trainable_params:,}")
     print(f"  Model architecture:\n{model}\n")
 
-    # DeepSpeed Configuration
+    # ---- 4. DeepSpeed Configuration ----
     os.makedirs(output_dir, exist_ok=True)
     ds_config = {
         "train_batch_size": PER_DEVICE_BATCH * max(world_size, 1) * GRAD_ACCUM,
@@ -123,7 +133,7 @@ def fine_tune_model(pretrained_path, output_dir):
         json.dump(ds_config, f, indent=2)
     print(f"Wrote DeepSpeed config to {ds_config_path}")
 
-    # Callbacks
+    # ---- 5. Callbacks ----
     resource_monitor = ResourceMonitorCallback()
     moemetrics_callback = MoEMetricsCallback(
         val_dataset, tokenizer, data_collator,
@@ -132,7 +142,7 @@ def fine_tune_model(pretrained_path, output_dir):
     )
     callbacks = [resource_monitor, moemetrics_callback]
 
-    # Detect DYNMoE based on the actual class structure
+    # Detect DYNMoE based on the actual class structure (aligned with Jupyter notebook)
     is_dynmoe = _class_uses_dynmoe(model.__class__)
     
     if is_dynmoe:
@@ -151,7 +161,7 @@ def fine_tune_model(pretrained_path, output_dir):
     else:
         print("Adaptive expert tuning disabled for this run.")
 
-    # Training Arguments
+    # ---- 6. Training Arguments ----
     training_args = TrainingArguments(
         output_dir=output_dir,
         num_train_epochs=NUM_EPOCHS_FT,
@@ -186,7 +196,7 @@ def fine_tune_model(pretrained_path, output_dir):
         save_only_model=True,
     )
 
-    # Trainer
+    # ---- 7. Trainer ----
     class UnifiedTrainer(Trainer):
         def create_optimizer_and_scheduler(self, num_training_steps):
             super().create_optimizer_and_scheduler(num_training_steps)
@@ -200,11 +210,11 @@ def fine_tune_model(pretrained_path, output_dir):
         train_dataset=finetune_dataset,
         eval_dataset=val_dataset,
         data_collator=data_collator,
-        processing_class=tokenizer,
+        tokenizer=tokenizer,
         callbacks=callbacks,
     )
 
-    # Train & Evaluate 
+    # ---- 8. Train & Evaluate ----
     print("\nStarting fine-tuning on finetune_dataset...")
     train_result = trainer.train()
     print("\nFine-tuning finished.")
@@ -215,7 +225,7 @@ def fine_tune_model(pretrained_path, output_dir):
     print(f"Final validation loss : {final_loss:.4f}")
     print(f"Validation Perplexity : {perplexity:.2f}")
 
-    # Save & Summarize
+    # ---- 9. Save & Summarize ----
     save_finetuned_model(trainer, output_dir)
     print_finetuning_summary(trainer, resource_monitor, moemetrics_callback, train_result, eval_results, perplexity)
 

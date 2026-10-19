@@ -1,3 +1,6 @@
+# ============================================================
+# fine_tuning_utils/model_loading.py
+# ============================================================
 import sys
 sys.path.append("..")
 
@@ -13,12 +16,12 @@ from ..DYNMoE_baseline.model import DynMoEForCausalLM as DynMoEModel
 
 
 def load_model_and_tokenizer(model_path):
-    # Load Tokenizer first
+    # 1. Load Tokenizer first
     tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    # Read config to determine ModelClass
+    # 2. Read config to determine ModelClass
     config_path = os.path.join(model_path, "config.json")
     with open(config_path, "r") as f:
         config_dict = json.load(f)
@@ -26,19 +29,21 @@ def load_model_and_tokenizer(model_path):
     if config_dict.get("model_type") == "dynmoe":
         ModelClass = DynMoEModel
     else:
+        # model_type is "deepseek" – distinguish baseline from routing
         if "max_routed_experts" in config_dict:
             ModelClass = RoutingModel
         else:
             ModelClass = BaselineModel
 
-    # Prepare Config
+    # 3. Prepare Config
     config = ModelClass.config_class.from_pretrained(model_path)
     config.pad_token_id = tokenizer.pad_token_id
     config.bos_token_id = tokenizer.bos_token_id
     config.eos_token_id = tokenizer.eos_token_id
-    config.dtype = torch.bfloat16
+    # FIX: Do NOT set config.dtype or pass torch_dtype here. 
+    # Let TrainingArguments(bf16=True) handle autocasting to prevent dtype mismatch.
 
-    # Patch GenerationMixin if missing 
+    # 4. Patch GenerationMixin if missing (future-proof for transformers >= 4.50)
     if not issubclass(ModelClass, GenerationMixin):
         ModelClass = type(
             ModelClass.__name__,
@@ -47,10 +52,10 @@ def load_model_and_tokenizer(model_path):
         )
         print(f"Patched {ModelClass.__name__} with GenerationMixin.")
 
-    # Load Model
+    # 5. Load Model in default precision (fp32)
     model = ModelClass.from_pretrained(model_path, config=config)
     
-    # Resize token embeddings 
+    # 6. Resize token embeddings
     model.resize_token_embeddings(len(tokenizer))
     
     return model, tokenizer

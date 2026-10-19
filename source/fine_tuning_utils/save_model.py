@@ -1,3 +1,6 @@
+# ============================================================
+# fine_tuning_utils/save_model.py
+# ============================================================
 import os
 import sys
 
@@ -12,6 +15,8 @@ def save_finetuned_model(trainer, output_dir):
 
     # Save the model via the Trainer (DeepSpeed-aware).
     trainer.save_model(final_output_dir)
+    
+    # Safely extract tokenizer (processing_class is new API, tokenizer is old API)
     tokenizer = getattr(trainer, "processing_class", None) or getattr(trainer, "tokenizer", None)
     if tokenizer is not None:
         tokenizer.save_pretrained(final_output_dir)

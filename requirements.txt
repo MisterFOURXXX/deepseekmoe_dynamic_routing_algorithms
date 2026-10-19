@@ -14,7 +14,7 @@ GPUtil
 mpi4py
 ninja        #==1.13.0
 nlpaug
-numpy==1.26.4
+numpy==2.5.4
 nvidia-ml-py3
 nvidia_smi
 packaging==26.3

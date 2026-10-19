@@ -1,13 +1,10 @@
 # ============================================================
 # source/data_preprocessing/config.py
 # ============================================================
-# Single source of truth for every dataset path in the project.
-# Both prepare_datasets.py and training_runner.py import from here.
-# ============================================================
 import os
 
 # ---------------- HuggingFace / tokenizer ----------------
-HF_TOKEN             = "hf_..."                              # your token
+HF_TOKEN             = "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" 
 TOKENIZER_NAME       = "deepseek-ai/deepseek-moe-16b-base"
 
 # ---------------- Sampling ----------------
@@ -19,14 +16,13 @@ AMBIGQA_MAX_EXAMPLES = 500
 # ---------------- Root ----------------
 DATASET_ROOT = "/content/deepseekmoe_dynamic_routing_algorithms/dataset"
 
-# ---------------- Individual paths (single source of truth) ----------------
+# ---------------- Individual paths ----------------
 DEFAULT_TOKENIZER_PATH = os.path.join(DATASET_ROOT, "tokenizer")
 
 # Language-modeling splits (SlimPajama-6B)
 DEFAULT_TRAIN_PATH     = os.path.join(DATASET_ROOT, "slimpajama_train")
 DEFAULT_FINE_PATH      = os.path.join(DATASET_ROOT, "slimpajama_finetune")
 DEFAULT_VAL_PATH       = os.path.join(DATASET_ROOT, "slimpajama_val")
-DEFAULT_TEST_PATH      = os.path.join(DATASET_ROOT, "slimpajama_test")
 
 # Evaluation benchmarks
 DEFAULT_MINIPILE_PATH  = os.path.join(DATASET_ROOT, "minipile")
@@ -35,13 +31,12 @@ DEFAULT_RACE_PATH      = os.path.join(DATASET_ROOT, "race")
 DEFAULT_TRIVIAQA_PATH  = os.path.join(DATASET_ROOT, "triviaqa")
 DEFAULT_AMBIGQA_PATH   = os.path.join(DATASET_ROOT, "ambigqa")
 
-# ---------------- Convenience dict (used by prepare_datasets.py) ----------------
+# ---------------- Convenience dict ----------------
 PATHS = {
     "tokenizer":           DEFAULT_TOKENIZER_PATH,
     "slimpajama_train":    DEFAULT_TRAIN_PATH,
     "slimpajama_finetune": DEFAULT_FINE_PATH,
     "slimpajama_val":      DEFAULT_VAL_PATH,
-    "slimpajama_test":     DEFAULT_TEST_PATH,
     "minipile":            DEFAULT_MINIPILE_PATH,
     "arc":                 DEFAULT_ARC_PATH,
     "race":                DEFAULT_RACE_PATH,

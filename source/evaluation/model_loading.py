@@ -1,5 +1,11 @@
+# ============================================================
+# evaluation/model_loading.py
+# ============================================================
 import sys
 sys.path.append("..")
+
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 import os
 import json
@@ -118,7 +124,8 @@ def load_model_and_tokenizer(model_path):
     if "DynMoE" in ModelClass.__name__ or "dynmoe" in ModelClass.__name__.lower():
         _patch_dynmoe_prepare_inputs(ModelClass)
 
-    model = ModelClass.from_pretrained(model_path, dtype=torch.bfloat16)
+    # Use torch_dtype for transformers 4.44.2 compatibility
+    model = ModelClass.from_pretrained(model_path, torch_dtype=torch.bfloat16)
     model.config.use_cache = True
 
     tok = AutoTokenizer.from_pretrained(model_path, use_fast=True)

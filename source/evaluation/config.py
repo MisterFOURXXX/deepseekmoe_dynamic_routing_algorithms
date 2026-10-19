@@ -1,11 +1,19 @@
+# ============================================================
+# evaluation/config.py
+# ============================================================
 import os
+from ..fine_tuning_utils import (
+    OUTPUT_FT_BASELINE,
+    OUTPUT_FT_DYNMOE_BASE,
+    OUTPUT_FT_DYNMOE_ROUTING
+)
+from ..data_preprocessing import DATASET_ROOT
 
-DATASET_ROOT = "/content/deepseekmoe_dynamic_routing_algorithms/dataset"
-MAX_SEQ_LEN  = 512
+MAX_SEQ_LEN = 256
 
 # EVAL_PARAMS - identical to the DeepSeekMoE evaluation code
 EVAL_PARAMS = {
-    "max_seq_len":        512,
+    "max_seq_len":        256,
     "eval_batch_size":    8,
     "gen_max_new_tokens": 256,
     "gen_min_new_tokens": 1,
@@ -14,9 +22,7 @@ EVAL_PARAMS = {
     "do_sample":          False,
 }
 
-# Default paths (Can be overridden by the runner)
-_VARIANT_PATHS = {
-    "deepseek_moe":        "./deepseek-moe-1b-checkpoints/final",
-    "deepseek_moe_dynmoe": "./deepseek-moe-dyn-1b-checkpoints/final",
-    "dynmoe":              "./dyn-1b-checkpoints-finetuned/final",
-}
+# Paths to the final saved fine-tuned models
+FINAL_FT_BASELINE       = os.path.join(OUTPUT_FT_BASELINE,       "final")
+FINAL_FT_DYNMOE_BASE    = os.path.join(OUTPUT_FT_DYNMOE_BASE,    "final")
+FINAL_FT_DYNMOE_ROUTING = os.path.join(OUTPUT_FT_DYNMOE_ROUTING, "final")

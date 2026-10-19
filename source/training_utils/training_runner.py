@@ -1,6 +1,3 @@
-# ============================================================
-# source/training_utils/training_runner.py
-# ============================================================
 import os
 import gc
 import math
@@ -11,8 +8,9 @@ import torch
 from datasets import Dataset, DatasetDict, load_from_disk
 from transformers import (
     AutoTokenizer, Trainer, TrainingArguments,
-    DataCollatorForLanguageModeling,
+    DataCollatorForLanguageModeling, GenerationConfig,
 )
+from transformers.generation.utils import GenerationMixin
 
 # Model imports 
 from ..deepseek_baseline.config import DeepseekConfig as BaselineConfig
@@ -51,25 +49,19 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 
-
-# DeepSpeed configuration (ZeRO-3 + bf16)
+# DeepSpeed configuration (ZeRO-2 + bf16) - matches Jupyter notebook
 ds_config = {
-    "train_batch_size": "auto",
-    "train_micro_batch_size_per_gpu": "auto",
-    "gradient_accumulation_steps": "auto",
+    "train_batch_size": PER_DEVICE_BATCH * max(world_size, 1) * GRAD_ACCUM,
+    "train_micro_batch_size_per_gpu": PER_DEVICE_BATCH,
+    "gradient_accumulation_steps": GRAD_ACCUM,
     "bf16": {"enabled": True},
     "zero_optimization": {
-        "stage": 3,
+        "stage": 2,
         "offload_optimizer": {"device": "cpu", "pin_memory": True},
-        "offload_param": {"device": "cpu", "pin_memory": True},
         "overlap_comm": True,
         "contiguous_gradients": True,
-        "reduce_bucket_size": "auto",
-        "stage3_prefetch_bucket_size": "auto",
-        "stage3_param_persistence_threshold": "auto",
-        "stage3_max_live_parameters": 1e9,
-        "stage3_max_reuse_distance": 1e9,
-        "stage3_gather_16bit_weights_on_model_save": True,
+        "reduce_bucket_size": 5e8,
+        "allgather_bucket_size": 5e8,
     },
     "gradient_clipping": 1.0,
     "steps_per_print": 10,
@@ -78,7 +70,6 @@ ds_config = {
 }
 
 
-# Data preparation
 def _prepare_data(
     data_file_path: str,
     val_data_file_path: str = None,
@@ -88,24 +79,9 @@ def _prepare_data(
     random_seed: int = 42,
     max_seq_len: int = MAX_SEQ_LEN,
 ):
-    """Return (tokenizer, tokenized_datasets, data_collator).
-
-    Accepts either:
-      * A directory produced by ``prepare_datasets.py`` (``save_to_disk``) -
-        already tokenized Arrow files, no re-tokenization performed.
-      * A legacy text file (``.txt`` / ``.jsonl`` with one sample per line) -
-        will be tokenized on the fly.
-
-    When ``data_file_path`` is a directory, ``val_data_file_path`` is derived
-    by replacing ``_train`` with ``_val``; pass it explicitly if the
-    convention differs.
-    """
-    # Pick the tokenizer 
+    """Return (tokenizer, tokenized_datasets, data_collator)."""
     if tokenizer_name is None:
-        if model_class is not None and "DYNMoE_baseline" in getattr(model_class, "__module__", ""):
-            tokenizer_name = "microsoft/phi-2"
-        else:
-            tokenizer_name = "deepseek-ai/deepseek-moe-16b-base"
+        tokenizer_name = "deepseek-ai/deepseek-moe-16b-base"
 
     tokenizer = AutoTokenizer.from_pretrained(
         tokenizer_name, trust_remote_code=True, use_fast=True,
@@ -114,9 +90,7 @@ def _prepare_data(
         tokenizer.pad_token = tokenizer.eos_token
     tokenizer.pad_token_id = tokenizer.eos_token_id
 
-    # Load / build the datasets 
     if os.path.isdir(data_file_path):
-        # On-disk Arrow dataset (already tokenized)
         train_dataset = load_from_disk(data_file_path)
 
         if val_data_file_path is None:
@@ -143,7 +117,6 @@ def _prepare_data(
                 f"prepare_datasets.py."
             )
     else:
-        # Legacy text file - tokenize on the fly
         with open(data_file_path, "r", encoding="utf-8") as f:
             lines = [line.strip() for line in f if line.strip()]
         if not lines:
@@ -176,7 +149,6 @@ def _prepare_data(
             desc="Tokenizing datasets",
         )
 
-    # Collator 
     data_collator = DataCollatorForLanguageModeling(
         tokenizer=tokenizer, mlm=False, pad_to_multiple_of=8,
     )
@@ -184,7 +156,6 @@ def _prepare_data(
     return tokenizer, tokenized_datasets, data_collator
 
 
-# Core training loop
 def train_model(
     ModelClass, ConfigClass, output_dir, is_dynmoe=False,
     tokenizer=None, tokenized_datasets=None, data_collator=None,
@@ -206,11 +177,24 @@ def train_model(
     config.pad_token_id = tokenizer.pad_token_id
     config.bos_token_id = tokenizer.bos_token_id
     config.eos_token_id = tokenizer.eos_token_id
+    # NOTE: Do NOT set config.dtype = torch.bfloat16 to avoid JSON serialization errors during checkpointing
+
+    # Patch GenerationMixin (Jupyter notebook logic)
+    if not issubclass(ModelClass, GenerationMixin):
+        ModelClass = type(
+            ModelClass.__name__,
+            (ModelClass, GenerationMixin),
+            {"__module__": ModelClass.__module__},
+        )
+        print(f"Patched {ModelClass.__name__} with GenerationMixin.")
 
     model = ModelClass(config)
     model.resize_token_embeddings(len(tokenizer))
     model.config.use_cache = False
     model.train()
+
+    if getattr(model, "generation_config", None) is None:
+        model.generation_config = GenerationConfig.from_model_config(model.config)
 
     total_params     = sum(p.numel() for p in model.parameters())
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -219,7 +203,7 @@ def train_model(
     print(f" Trainable parameters: {trainable_params:,}")
     print(f" Model architecture  :\n{model}\n")
 
-    # TrainingArguments 
+    # TrainingArguments (matches Jupyter notebook)
     training_args = TrainingArguments(
         output_dir=output_dir,
         num_train_epochs=NUM_EPOCHS,
@@ -230,14 +214,14 @@ def train_model(
         weight_decay=WEIGHT_DECAY,
         warmup_steps=WARMUP_STEPS,
         max_grad_norm=1.0,
-        warmup_ratio=0.05,
         lr_scheduler_type="cosine",
         fp16=False,
         bf16=True,
         bf16_full_eval=False,
         fp16_full_eval=False,
         half_precision_backend="auto",
-        logging_steps=10,
+        logging_steps=1,
+        logging_first_step=True,
         save_strategy="epoch",
         eval_strategy="epoch",
         load_best_model_at_end=False,
@@ -250,7 +234,7 @@ def train_model(
         dataloader_num_workers=2,
         remove_unused_columns=True,
         optim="adamw_torch",
-        logging_dir=f"{output_dir}/logs",
+        logging_dir=os.path.join(output_dir, "logs"),
         seed=42,
         save_only_model=True,
     )
@@ -278,8 +262,10 @@ def train_model(
                 clear_cache_every=CLEAR_CACHE_EVERY,
             )
         callbacks.append(adaptive_callback)
+        print("AdaptiveExpertTuningCallback enabled.")
+    else:
+        print("Adaptive expert tuning disabled for this run.")
 
-    # Trainer 
     trainer = Trainer(
         model=model,
         args=training_args,
@@ -306,7 +292,7 @@ def train_model(
 
     return trainer
 
-# Entry point
+
 def run_training(
     ModelClass, ConfigClass, output_dir, is_dynmoe=False,
     tokenizer=None, tokenized_datasets=None, data_collator=None,

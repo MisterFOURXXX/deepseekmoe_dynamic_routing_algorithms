@@ -1,23 +1,41 @@
+# ============================================================
+# evaluation/evaluation_runner.py
+# ============================================================
 import sys
 sys.path.append("..")
 
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings("ignore", category=UserWarning)
+
+import os
 import gc
 import torch
 import pandas as pd
 from datasets import load_from_disk
 
-from .config import DATASET_ROOT, EVAL_PARAMS
+from .config import (
+    DATASET_ROOT, EVAL_PARAMS,
+    FINAL_FT_BASELINE, FINAL_FT_DYNMOE_BASE, FINAL_FT_DYNMOE_ROUTING
+)
 from .model_loading import load_model_and_tokenizer
 from .evaluation import evaluate_model
 
+os.environ["HF_DATASETS_DISABLE_DILL"]     = "1"
+os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+os.environ["TOKENIZERS_PARALLELISM"]       = "false"
+os.environ["CUBLAS_WORKSPACE_CONFIG"]      = ":4096:8"
+
 def _p(name):
-    return f"{DATASET_ROOT}/{name}"
+    return os.path.join(DATASET_ROOT, name)
+
 
 def clear_gpu_memory():
     gc.collect()
     if torch.cuda.is_available():
         torch.cuda.synchronize()
         torch.cuda.empty_cache()
+
 
 def run_evaluate(model_path, label="Fine-tuned Model"):
     print("=" * 60)
@@ -27,10 +45,9 @@ def run_evaluate(model_path, label="Fine-tuned Model"):
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     
-    # Load benchmarks from disk
+    # Load benchmarks from disk (SlimPajama test split removed)
     print("Loading benchmark datasets from disk...")
     datasets_to_run = [
-        ("slimpajama", load_from_disk(_p("slimpajama_test"))),
         ("minipile",   load_from_disk(_p("minipile"))),
         ("arc",        load_from_disk(_p("arc"))),
         ("race",       load_from_disk(_p("race"))),
@@ -68,9 +85,27 @@ def run_evaluate(model_path, label="Fine-tuned Model"):
     # Print combined summary
     if all_results:
         print("\n" + "=" * 80)
-        print("COMBINED BENCHMARK SUMMARY")
+        print(f"COMBINED BENCHMARK SUMMARY: {label}")
         print("=" * 80)
         print(pd.DataFrame(all_results).to_string(index=False))
         print("=" * 80)
     else:
         print("\nNo benchmarks were run.")
+
+
+def evaluate_all_finetuned_models():
+    """
+    Automatically evaluates the three fine-tuned models saved in the checkpoints folder.
+    """
+    print("\n" + "#" * 80)
+    print("# RUNNING ALL FINE-TUNED MODEL EVALUATIONS")
+    print("#" * 80)
+    
+    # 1. Baseline
+    run_evaluate(FINAL_FT_BASELINE, label="Baseline Fine-Tuned")
+    
+    # 2. DYNMoE Baseline
+    run_evaluate(FINAL_FT_DYNMOE_BASE, label="DYNMoE Baseline Fine-Tuned")
+    
+    # 3. DeepSeek Dynamics Routing
+    run_evaluate(FINAL_FT_DYNMOE_ROUTING, label="DYNMoE Routing Fine-Tuned")

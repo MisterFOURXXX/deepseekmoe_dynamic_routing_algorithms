@@ -17,7 +17,7 @@ python3 -m pip uninstall -y transformers torch tokenizers torchvision torchaudio
 # Upgrade core build tools
 python3 -m pip install --upgrade pip setuptools wheel
 # PyTorch with CUDA
-python3 -m pip install torch==2.11.0 torchvision==0.26.0 torchaudio==2.11.0  #--index-url https://download.pytorch.org/whl/cu128
+python3 -m pip install torch==2.13.0 torchvision==0.28.0 # --index-url https://download.pytorch.org/whl/cu130
 # Python packages
 python3 -m pip install -r requirements.txt
 echo "Environment setup complete!"

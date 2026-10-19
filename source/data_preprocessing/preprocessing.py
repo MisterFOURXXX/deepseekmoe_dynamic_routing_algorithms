@@ -1,7 +1,10 @@
 # ============================================================
-# Loads, samples, tokenizes, and saves each dataset to disk.
-# Paths come from config.py - this file defines none of them.
+# source/data_preprocessing/prepare_datasets.py
 # ============================================================
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+
 import os
 os.environ["HF_DATASETS_DISABLE_DILL"]          = "1"
 os.environ["TOKENIZERS_PARALLELISM"]            = "false"
@@ -15,15 +18,9 @@ from transformers import AutoTokenizer
 from huggingface_hub import login
 
 from .config import (
-    HF_TOKEN,
-    TOKENIZER_NAME,
-    MAX_SEQ_LEN,
-    SAMPLE_RATIO,
-    BENCH_SAMPLE_RATIO,
-    AMBIGQA_MAX_EXAMPLES,
-    DATASET_ROOT,
-    PATHS,                      # <- the only place paths are defined
-    DEFAULT_TOKENIZER_PATH,
+    HF_TOKEN, TOKENIZER_NAME, MAX_SEQ_LEN,
+    SAMPLE_RATIO, BENCH_SAMPLE_RATIO, AMBIGQA_MAX_EXAMPLES,
+    DATASET_ROOT, PATHS, DEFAULT_TOKENIZER_PATH,
 )
 
 disable_progress_bar()
@@ -92,8 +89,7 @@ QA_FEATURES = Features({
 
 # --- SlimPajama splits ---
 def build_slimpajama():
-    keys = ["slimpajama_train", "slimpajama_finetune",
-            "slimpajama_val", "slimpajama_test"]
+    keys = ["slimpajama_train", "slimpajama_finetune", "slimpajama_val"]
     if all(_dataset_saved(PATHS[k]) for k in keys):
         print("SlimPajama splits already exist - skipping.")
         return
@@ -110,11 +106,9 @@ def build_slimpajama():
 
     train_n = max(1, int(len(sp["train"])      * SAMPLE_RATIO))
     val_n   = max(1, int(len(sp["validation"]) * 0.05))
-    test_n  = max(1, int(len(sp["test"])       * 0.05))
 
     train_sub = sp["train"].shuffle(seed=42).select(range(train_n))
     val_sub   = sp["validation"].shuffle(seed=42).select(range(val_n))
-    test_sub  = sp["test"].shuffle(seed=42).select(range(test_n))
 
     split_idx    = int(len(train_sub) * 0.6)
     train_raw    = train_sub.select(range(split_idx))
@@ -123,12 +117,10 @@ def build_slimpajama():
     print(f"  Train    : {len(train_raw):,}")
     print(f"  Finetune : {len(finetune_raw):,}")
     print(f"  Val      : {len(val_sub):,}")
-    print(f"  Test     : {len(test_sub):,}")
 
     for name, raw in [("slimpajama_train",    train_raw),
                       ("slimpajama_finetune", finetune_raw),
-                      ("slimpajama_val",      val_sub),
-                      ("slimpajama_test",     test_sub)]:
+                      ("slimpajama_val",      val_sub)]:
         print(f"Tokenizing {name} ({len(raw)}) ...")
         ds = Dataset.from_generator(
             lambda raw=raw: manual_tokenize(raw["text"], MAX_SEQ_LEN),

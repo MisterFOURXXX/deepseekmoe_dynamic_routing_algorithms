@@ -1,5 +1,14 @@
+# ============================================================
+# evaluation/evaluation.py
+# ============================================================
 import sys
 sys.path.append("..")
+
+import warnings
+# Suppress external library warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", message=".*seen_tokens.*")
 
 import math
 import re
