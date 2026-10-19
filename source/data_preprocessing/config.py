@@ -4,7 +4,7 @@
 import os
 
 # ---------------- HuggingFace / tokenizer ----------------
-HF_TOKEN             = "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" 
+HF_TOKEN             = "hf_..." 
 TOKENIZER_NAME       = "deepseek-ai/deepseek-moe-16b-base"
 
 # ---------------- Sampling ----------------
