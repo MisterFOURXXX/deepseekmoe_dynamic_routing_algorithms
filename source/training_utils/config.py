@@ -1,3 +1,6 @@
+# ============================================================
+# training_utils/config.py
+# ============================================================
 import os
 import torch
 
@@ -15,5 +18,4 @@ world_size               = torch.cuda.device_count()
 
 # Output directories  
 OUTPUT_BASELINE        = "/content/deepseekmoe_dynamic_routing_algorithms/checkpoints/baseline"
-OUTPUT_DYNMOE_BASE     = "/content/deepseekmoe_dynamic_routing_algorithms/checkpoints/dynmoe_baseline"
 OUTPUT_DEEPSEEK_DYNMOE = "/content/deepseekmoe_dynamic_routing_algorithms/checkpoints/dynmoe_routing"

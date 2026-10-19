@@ -8,7 +8,6 @@ import torch
 
 from ..training_utils.config import (
     OUTPUT_BASELINE,
-    OUTPUT_DYNMOE_BASE,
     OUTPUT_DEEPSEEK_DYNMOE
 )
 
@@ -26,10 +25,8 @@ world_size = torch.cuda.device_count()
 
 # Fine-tuning pretrained checkpoints
 PRETRAINED_BASELINE       = OUTPUT_BASELINE        + "/final"   
-PRETRAINED_DYNMOE_BASE    = OUTPUT_DYNMOE_BASE     + "/final"
 PRETRAINED_DYNMOE_ROUTING = OUTPUT_DEEPSEEK_DYNMOE + "/final"
 
 # Output directories for fine-tuned models
 OUTPUT_FT_BASELINE       = OUTPUT_BASELINE        + "/baseline-ft"
-OUTPUT_FT_DYNMOE_BASE    = OUTPUT_DYNMOE_BASE     + "/dynmoe-baseline-ft"
 OUTPUT_FT_DYNMOE_ROUTING = OUTPUT_DEEPSEEK_DYNMOE + "/dynmoe-routing-ft"

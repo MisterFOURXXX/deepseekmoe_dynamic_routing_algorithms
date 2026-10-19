@@ -9,7 +9,6 @@ __all__ = [
     "EVAL_PARAMS",
     "DATASET_ROOT",
     "FINAL_FT_BASELINE",
-    "FINAL_FT_DYNMOE_BASE",
     "FINAL_FT_DYNMOE_ROUTING",
 ]
 
@@ -18,6 +17,5 @@ from .config import (
     EVAL_PARAMS,
     DATASET_ROOT,
     FINAL_FT_BASELINE,
-    FINAL_FT_DYNMOE_BASE,
     FINAL_FT_DYNMOE_ROUTING,
 )

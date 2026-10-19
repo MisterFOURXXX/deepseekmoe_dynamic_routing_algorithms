@@ -15,7 +15,6 @@ from transformers.cache_utils import DynamicCache
 from transformers.generation.utils import GenerationMixin
 
 from ..deepseek_baseline.model         import DeepseekForCausalLM as BaselineModel
-from ..DYNMoE_baseline.model           import DynMoEForCausalLM as DYNMoEModel
 from ..deepseek_dynamics_routing.model import DeepseekForCausalLM as RoutingModel
 
 
@@ -86,23 +85,16 @@ _ROUTING_MARKERS = (
 
 def _resolve_classes(model_path: str):
     """
-    Pick the correct (ConfigClass, ModelClass) pair for a saved checkpoint
-    by inspecting its config.json.
+    Pick the correct ModelClass for a saved checkpoint by inspecting its config.json.
     """
     config_path = os.path.join(model_path, "config.json")
     with open(config_path, "r") as f:
         cfg = json.load(f)
 
-    model_type = cfg.get("model_type", "")
-
-    if model_type == "dynmoe":
-        return DYNMoEModel
-    if model_type == "deepseek":
-        if any(k in cfg for k in _ROUTING_MARKERS):
-            return RoutingModel
-        return BaselineModel
-
-    raise ValueError(f"Unknown model_type '{model_type}' in {config_path}.")
+    # Distinguish routing from baseline
+    if any(k in cfg for k in _ROUTING_MARKERS):
+        return RoutingModel
+    return BaselineModel
 
 
 def load_model_and_tokenizer(model_path):
@@ -120,8 +112,8 @@ def load_model_and_tokenizer(model_path):
         )
         print(f"Patched {ModelClass.__name__} with GenerationMixin.")
 
-    # Patch DynMoE prepare_inputs if needed
-    if "DynMoE" in ModelClass.__name__ or "dynmoe" in ModelClass.__name__.lower():
+    # Patch DynMoE prepare_inputs if needed (only routing model needs it)
+    if ModelClass == RoutingModel:
         _patch_dynmoe_prepare_inputs(ModelClass)
 
     # Use torch_dtype for transformers 4.44.2 compatibility

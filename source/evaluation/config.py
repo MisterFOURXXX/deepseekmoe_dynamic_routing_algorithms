@@ -4,7 +4,6 @@
 import os
 from ..fine_tuning_utils import (
     OUTPUT_FT_BASELINE,
-    OUTPUT_FT_DYNMOE_BASE,
     OUTPUT_FT_DYNMOE_ROUTING
 )
 from ..data_preprocessing import DATASET_ROOT
@@ -24,5 +23,4 @@ EVAL_PARAMS = {
 
 # Paths to the final saved fine-tuned models
 FINAL_FT_BASELINE       = os.path.join(OUTPUT_FT_BASELINE,       "final")
-FINAL_FT_DYNMOE_BASE    = os.path.join(OUTPUT_FT_DYNMOE_BASE,    "final")
 FINAL_FT_DYNMOE_ROUTING = os.path.join(OUTPUT_FT_DYNMOE_ROUTING, "final")

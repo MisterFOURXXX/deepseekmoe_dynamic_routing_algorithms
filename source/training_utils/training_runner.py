@@ -1,3 +1,6 @@
+# ============================================================
+# source/training_utils/training_runner.py
+# ============================================================
 import os
 import gc
 import math
@@ -15,13 +18,6 @@ from transformers.generation.utils import GenerationMixin
 # Model imports 
 from ..deepseek_baseline.config import DeepseekConfig as BaselineConfig
 from ..deepseek_baseline.model  import DeepseekForCausalLM as BaselineModel
-
-from ..DYNMoE_baseline.config import DynMoEConfig as DYNMoEBaseConfig
-from ..DYNMoE_baseline.model  import DynMoEForCausalLM as DYNMoEBaseModel
-from ..DYNMoE_baseline.adaptive_tuning import (
-    AdaptiveExpertTuningCallback as DYNMoEBaseCallback,
-    ADAPTIVE_AUDIT_STEPS as DYNMoE_BASE_ADAPTIVE_AUDIT_STEPS,
-)
 
 from ..deepseek_dynamics_routing.config import DeepseekConfig as DynmoeConfig
 from ..deepseek_dynamics_routing.model  import DeepseekForCausalLM as DynmoeModel
@@ -49,7 +45,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 
-# DeepSpeed configuration (ZeRO-2 + bf16) - matches Jupyter notebook
+# DeepSpeed configuration (ZeRO-2 + bf16)
 ds_config = {
     "train_batch_size": PER_DEVICE_BATCH * max(world_size, 1) * GRAD_ACCUM,
     "train_micro_batch_size_per_gpu": PER_DEVICE_BATCH,
@@ -68,6 +64,16 @@ ds_config = {
     "wall_clock_breakdown": False,
     "zero_allow_untested_optimizer": True,
 }
+
+
+def _class_uses_dynmoe(cls):
+    if "DynMoE" in cls.__name__ or "dynmoe" in cls.__name__.lower():
+        return True
+    names = ("OptimizedDeepSeekMoE", "FusedMoEGate")
+    mod = sys.modules.get(getattr(cls, "__module__", None))
+    if mod is not None and any(hasattr(mod, n) for n in names):
+        return True
+    return any(n in globals() for n in names)
 
 
 def _prepare_data(
@@ -177,7 +183,6 @@ def train_model(
     config.pad_token_id = tokenizer.pad_token_id
     config.bos_token_id = tokenizer.bos_token_id
     config.eos_token_id = tokenizer.eos_token_id
-    # NOTE: Do NOT set config.dtype = torch.bfloat16 to avoid JSON serialization errors during checkpointing
 
     # Patch GenerationMixin (Jupyter notebook logic)
     if not issubclass(ModelClass, GenerationMixin):
@@ -203,7 +208,7 @@ def train_model(
     print(f" Trainable parameters: {trainable_params:,}")
     print(f" Model architecture  :\n{model}\n")
 
-    # TrainingArguments (matches Jupyter notebook)
+    # TrainingArguments
     training_args = TrainingArguments(
         output_dir=output_dir,
         num_train_epochs=NUM_EPOCHS,
@@ -249,18 +254,13 @@ def train_model(
     callbacks = [resource_monitor, moemetrics]
 
     if is_dynmoe:
-        if "DYNMoE_baseline" in ModelClass.__module__:
-            adaptive_callback = DYNMoEBaseCallback(
-                audit_steps=DYNMoE_BASE_ADAPTIVE_AUDIT_STEPS,
-            )
-        else:
-            adaptive_callback = DynmoeRoutingCallback(
-                audit_steps=AUDIT_STEPS,
-                prune_threshold=PRUNE_THRESHOLD,
-                min_active_experts=MIN_ACTIVE_EXPERTS,
-                bias_update_interval=BIAS_UPDATE_INTERVAL,
-                clear_cache_every=CLEAR_CACHE_EVERY,
-            )
+        adaptive_callback = DynmoeRoutingCallback(
+            audit_steps=AUDIT_STEPS,
+            prune_threshold=PRUNE_THRESHOLD,
+            min_active_experts=MIN_ACTIVE_EXPERTS,
+            bias_update_interval=BIAS_UPDATE_INTERVAL,
+            clear_cache_every=CLEAR_CACHE_EVERY,
+        )
         callbacks.append(adaptive_callback)
         print("AdaptiveExpertTuningCallback enabled.")
     else:
@@ -272,7 +272,7 @@ def train_model(
         train_dataset=tokenized_datasets["train"],
         eval_dataset=tokenized_datasets["validation"],
         data_collator=data_collator,
-        tokenizer=tokenizer,          # transformers==4.44.2 still uses `tokenizer=`
+        tokenizer=tokenizer,
         callbacks=callbacks,
     )
 

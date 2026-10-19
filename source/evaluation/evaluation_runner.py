@@ -16,7 +16,7 @@ from datasets import load_from_disk
 
 from .config import (
     DATASET_ROOT, EVAL_PARAMS,
-    FINAL_FT_BASELINE, FINAL_FT_DYNMOE_BASE, FINAL_FT_DYNMOE_ROUTING
+    FINAL_FT_BASELINE, FINAL_FT_DYNMOE_ROUTING
 )
 from .model_loading import load_model_and_tokenizer
 from .evaluation import evaluate_model
@@ -45,7 +45,7 @@ def run_evaluate(model_path, label="Fine-tuned Model"):
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     
-    # Load benchmarks from disk (SlimPajama test split removed)
+    # Load benchmarks from disk
     print("Loading benchmark datasets from disk...")
     datasets_to_run = [
         ("minipile",   load_from_disk(_p("minipile"))),
@@ -95,7 +95,7 @@ def run_evaluate(model_path, label="Fine-tuned Model"):
 
 def evaluate_all_finetuned_models():
     """
-    Automatically evaluates the three fine-tuned models saved in the checkpoints folder.
+    Automatically evaluates the two fine-tuned models saved in the checkpoints folder.
     """
     print("\n" + "#" * 80)
     print("# RUNNING ALL FINE-TUNED MODEL EVALUATIONS")
@@ -104,8 +104,5 @@ def evaluate_all_finetuned_models():
     # 1. Baseline
     run_evaluate(FINAL_FT_BASELINE, label="Baseline Fine-Tuned")
     
-    # 2. DYNMoE Baseline
-    run_evaluate(FINAL_FT_DYNMOE_BASE, label="DYNMoE Baseline Fine-Tuned")
-    
-    # 3. DeepSeek Dynamics Routing
+    # 2. DeepSeek Dynamics Routing
     run_evaluate(FINAL_FT_DYNMOE_ROUTING, label="DYNMoE Routing Fine-Tuned")

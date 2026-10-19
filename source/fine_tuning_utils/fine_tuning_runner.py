@@ -1,3 +1,6 @@
+# ============================================================
+# fine_tuning_utils/fine_tuning_runner.py
+# ============================================================
 import sys
 sys.path.append("..")
 
@@ -40,13 +43,6 @@ from ..memory_utils import cleanup_trainer, clear_cached_data
 # Model imports
 from ..deepseek_baseline.config import DeepseekConfig as BaselineConfig
 from ..deepseek_baseline.model import DeepseekForCausalLM as BaselineModel
-
-from ..DYNMoE_baseline.config import DynMoEConfig as DYNMoEBaseConfig
-from ..DYNMoE_baseline.model import DynMoEForCausalLM as DYNMoEBaseModel
-
-# Adaptive tuning imports
-from ..DYNMoE_baseline.adaptive_tuning import AdaptiveExpertTuningCallback as DYNMoEBaseCallback
-from ..DYNMoE_baseline.adaptive_tuning import ADAPTIVE_AUDIT_STEPS as DYNMoE_BASE_ADAPTIVE_AUDIT_STEPS
 
 from ..deepseek_dynamics_routing.config import DeepseekConfig as DynmoeConfig
 from ..deepseek_dynamics_routing.model import DeepseekForCausalLM as DynmoeModel
@@ -142,20 +138,17 @@ def fine_tune_model(pretrained_path, output_dir):
     )
     callbacks = [resource_monitor, moemetrics_callback]
 
-    # Detect DYNMoE based on the actual class structure (aligned with Jupyter notebook)
+    # Detect DYNMoE based on the actual class structure
     is_dynmoe = _class_uses_dynmoe(model.__class__)
     
     if is_dynmoe:
-        if "DYNMoE_baseline" in model.__class__.__module__ or "DynMoEForCausalLM" in model.__class__.__name__:
-            adaptive_callback = DYNMoEBaseCallback(audit_steps=DYNMoE_BASE_ADAPTIVE_AUDIT_STEPS)
-        else:
-            adaptive_callback = DynmoeRoutingCallback(
-                audit_steps=AUDIT_STEPS,
-                prune_threshold=PRUNE_THRESHOLD,
-                min_active_experts=MIN_ACTIVE_EXPERTS,
-                bias_update_interval=BIAS_UPDATE_INTERVAL,
-                clear_cache_every=CLEAR_CACHE_EVERY,
-            )
+        adaptive_callback = DynmoeRoutingCallback(
+            audit_steps=AUDIT_STEPS,
+            prune_threshold=PRUNE_THRESHOLD,
+            min_active_experts=MIN_ACTIVE_EXPERTS,
+            bias_update_interval=BIAS_UPDATE_INTERVAL,
+            clear_cache_every=CLEAR_CACHE_EVERY,
+        )
         callbacks.append(adaptive_callback)
         print("AdaptiveExpertTuningCallback enabled.")
     else:
