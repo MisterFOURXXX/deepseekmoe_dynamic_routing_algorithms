@@ -20,7 +20,7 @@ from .config import (
     DEFAULT_RACE_PATH,
     DEFAULT_TRIVIAQA_PATH,
     DEFAULT_AMBIGQA_PATH,
-    PATHS as DATASET_PATHS, # Alias PATHS to DATASET_PATHS for backwards compatibility
+    PATHS as DATASET_PATHS,
 )
 
 __all__ = [

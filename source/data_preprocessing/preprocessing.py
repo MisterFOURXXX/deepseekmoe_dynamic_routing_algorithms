@@ -1,11 +1,13 @@
 # ============================================================
-# source/data_preprocessing/prepare_datasets.py
+# source/data_preprocessing/preprocessing.py
 # ============================================================
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 import os
+# FIX: Redirect HF cache to bypass the corrupted global cache
+os.environ["HF_DATASETS_CACHE"] = "/content/deepseekmoe_dynamic_routing_algorithms/hf_cache"
 os.environ["HF_DATASETS_DISABLE_DILL"]          = "1"
 os.environ["TOKENIZERS_PARALLELISM"]            = "false"
 os.environ["HF_DATASETS_DISABLE_PROGRESS_BARS"] = "1"
@@ -17,7 +19,7 @@ from datasets.utils.logging import disable_progress_bar
 from transformers import AutoTokenizer
 from huggingface_hub import login
 
-from .config import (
+from config import (
     HF_TOKEN, TOKENIZER_NAME, MAX_SEQ_LEN,
     SAMPLE_RATIO, BENCH_SAMPLE_RATIO, AMBIGQA_MAX_EXAMPLES,
     DATASET_ROOT, PATHS, DEFAULT_TOKENIZER_PATH,
@@ -87,7 +89,7 @@ QA_FEATURES = Features({
 })
 
 
-# --- SlimPajama splits ---
+# --- SlimPajama splits (Test split removed) ---
 def build_slimpajama():
     keys = ["slimpajama_train", "slimpajama_finetune", "slimpajama_val"]
     if all(_dataset_saved(PATHS[k]) for k in keys):
@@ -136,8 +138,10 @@ def build_minipile():
         print("MiniPile already exists - skipping.")
         return
     print("Loading MiniPile ...")
-    mp = safe_sample(load_dataset("JeanKaddour/minipile", split="test"),
-                     BENCH_SAMPLE_RATIO)
+    mp = safe_sample(
+        load_dataset("JeanKaddour/minipile", split="test", download_mode="force_redownload"),
+        BENCH_SAMPLE_RATIO
+    )
     ds = Dataset.from_generator(
         lambda: manual_tokenize(mp["text"], MAX_SEQ_LEN),
         features=LM_FEATURES,
@@ -153,7 +157,7 @@ def build_arc():
         return
     print("Loading ARC-Challenge ...")
     arc = safe_sample(
-        load_dataset("allenai/ai2_arc", "ARC-Challenge", split="test"),
+        load_dataset("allenai/ai2_arc", "ARC-Challenge", split="test", download_mode="force_redownload"),
         BENCH_SAMPLE_RATIO,
     )
 
@@ -181,7 +185,7 @@ def build_race():
         return
     print("Loading RACE ...")
     race = safe_sample(
-        load_dataset("ehovy/race", "all", split="test"),
+        load_dataset("ehovy/race", "all", split="test", download_mode="force_redownload"),
         BENCH_SAMPLE_RATIO,
     )
 
@@ -211,7 +215,7 @@ def build_triviaqa():
         return
     print("Loading TriviaQA (mandarjoshi/trivia_qa, rc.nocontext, validation) ...")
     tr = safe_sample(
-        load_dataset("mandarjoshi/trivia_qa", "rc.nocontext", split="validation"),
+        load_dataset("mandarjoshi/trivia_qa", "rc.nocontext", split="validation", download_mode="force_redownload"),
         BENCH_SAMPLE_RATIO,
     )
 
@@ -259,7 +263,7 @@ def build_ambigqa():
         return
 
     print("Loading AmbigQA (sewon/ambig_qa, full, validation) ...")
-    full = load_dataset("sewon/ambig_qa", "full", split="validation")
+    full = load_dataset("sewon/ambig_qa", "full", split="validation", download_mode="force_redownload")
     if len(full) > AMBIGQA_MAX_EXAMPLES:
         full = full.shuffle(seed=42).select(range(AMBIGQA_MAX_EXAMPLES))
     print(f"  Using {len(full)} validation examples")
