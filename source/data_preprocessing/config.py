@@ -3,7 +3,7 @@
 # ============================================================
 import os
 
-HF_TOKEN             = "hf_..." 
+HF_TOKEN             = "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" 
 TOKENIZER_NAME       = "deepseek-ai/deepseek-moe-16b-base"
 
 MAX_SEQ_LEN          = 384
@@ -12,6 +12,7 @@ BENCH_SAMPLE_RATIO   = 0.005
 AMBIGQA_MAX_EXAMPLES = 50
 
 DATASET_ROOT = "/content/deepseekmoe_dynamic_routing_algorithms/dataset"
+REPO_ROOT = "/content/deepseekmoe_dynamic_routing_algorithms"
 
 DEFAULT_TOKENIZER_PATH = os.path.join(DATASET_ROOT, "tokenizer")
 DEFAULT_TRAIN_PATH     = os.path.join(DATASET_ROOT, "slimpajama_train")

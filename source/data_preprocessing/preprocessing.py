@@ -6,8 +6,8 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 import os
-# FIX: Redirect HF cache to bypass the corrupted global cache
-os.environ["HF_DATASETS_CACHE"] = "/content/deepseekmoe_dynamic_routing_algorithms/hf_cache"
+import shutil
+
 os.environ["HF_DATASETS_DISABLE_DILL"]          = "1"
 os.environ["TOKENIZERS_PARALLELISM"]            = "false"
 os.environ["HF_DATASETS_DISABLE_PROGRESS_BARS"] = "1"
@@ -22,8 +22,11 @@ from huggingface_hub import login
 from config import (
     HF_TOKEN, TOKENIZER_NAME, MAX_SEQ_LEN,
     SAMPLE_RATIO, BENCH_SAMPLE_RATIO, AMBIGQA_MAX_EXAMPLES,
-    DATASET_ROOT, PATHS, DEFAULT_TOKENIZER_PATH,
+    DATASET_ROOT, PATHS, DEFAULT_TOKENIZER_PATH, REPO_ROOT
 )
+
+# Redirect HF cache (so corrupt global cache doesn't affect us)
+os.environ["HF_DATASETS_CACHE"]                 = REPO_ROOT + "/hf_cache"
 
 disable_progress_bar()
 
@@ -41,11 +44,77 @@ tokenizer.save_pretrained(DEFAULT_TOKENIZER_PATH)
 print(f"Tokenizer saved to {DEFAULT_TOKENIZER_PATH}")
 
 
+# ------------------------------------------------------------
+# Corruption recovery helpers
+# ------------------------------------------------------------
 def _dataset_saved(path):
-    return any(
+    """
+    True only if a saved dataset exists AND can be loaded.
+    If it exists but fails to load (corrupted features), it is
+    deleted so it will be re-processed.
+    """
+    if not os.path.isdir(path):
+        return False
+    if not any(
         os.path.exists(os.path.join(path, m))
         for m in ("dataset_info.json", "state.json")
+    ):
+        return False
+
+    try:
+        from datasets.info import DatasetInfo
+        DatasetInfo.from_directory(path)
+        return True
+    except Exception as e:
+        print(f"  WARNING: corrupted saved dataset at {path}: "
+              f"{type(e).__name__}: {e}")
+        print(f"  Deleting {path} and re-processing...")
+        try:
+            shutil.rmtree(path)
+        except Exception as rm_e:
+            print(f"  Could not delete {path}: {rm_e}")
+        return False
+
+
+def _clear_builder_cache(dataset_name, config_name=None):
+    """
+    Delete the HF datasets **builder** cache for a specific
+    dataset / config. This is separate from save_to_disk() and is
+    where `DatasetBuilder.__init__` reads dataset_info.json.
+    """
+    if not dataset_name or "/" not in dataset_name:
+        return
+    org, _, name = dataset_name.partition("/")
+    base = os.path.join(
+        os.environ["HF_DATASETS_CACHE"],
+        f"{org}___{name}",
     )
+    if config_name:
+        base = os.path.join(base, config_name)
+    if os.path.isdir(base):
+        shutil.rmtree(base)
+        print(f"  Cleared HF builder cache: {base}")
+
+
+def _safe_load_dataset(*args, **kwargs):
+    """
+    Wrapper around load_dataset() that auto-recovers from the
+    `TypeError: must be called with a dataclass type or instance`
+    error caused by a corrupted HF builder cache.
+    """
+    try:
+        return load_dataset(*args, **kwargs)
+    except TypeError as e:
+        msg = str(e).lower()
+        if "dataclass" not in msg:
+            raise
+        dataset_name = args[0] if args else kwargs.get("path")
+        config_name  = args[1] if len(args) > 1 else kwargs.get("name")
+        print(f"  Detected corrupted builder cache for "
+              f"{dataset_name}/{config_name}. "
+              f"Clearing and retrying ...")
+        _clear_builder_cache(dataset_name, config_name)
+        return load_dataset(*args, **kwargs)
 
 
 # --- Helpers ---
@@ -73,9 +142,10 @@ def manual_tokenize(text_iter, max_len, batch_size=8192):
                    "attention_mask": out["attention_mask"][j]}
 
 
+# int32 for BOTH fields (int8 does not round-trip in datasets==2.21.0)
 LM_FEATURES = Features({
     "input_ids":      Sequence(Value("int32")),
-    "attention_mask": Sequence(Value("int8")),
+    "attention_mask": Sequence(Value("int32")),
 })
 MC_FEATURES = Features({
     "prompt":        Value("string"),
@@ -89,7 +159,7 @@ QA_FEATURES = Features({
 })
 
 
-# --- SlimPajama splits (Test split removed) ---
+# --- SlimPajama splits ---
 def build_slimpajama():
     keys = ["slimpajama_train", "slimpajama_finetune", "slimpajama_val"]
     if all(_dataset_saved(PATHS[k]) for k in keys):
@@ -97,7 +167,7 @@ def build_slimpajama():
         return
 
     print("Loading SlimPajama-6B ...")
-    sp = load_dataset(
+    sp = _safe_load_dataset(
         "DKYoon/SlimPajama-6B", token=HF_TOKEN, streaming=False,
         download_mode="reuse_dataset_if_exists",
     )
@@ -139,8 +209,11 @@ def build_minipile():
         return
     print("Loading MiniPile ...")
     mp = safe_sample(
-        load_dataset("JeanKaddour/minipile", split="test", download_mode="force_redownload"),
-        BENCH_SAMPLE_RATIO
+        _safe_load_dataset(
+            "JeanKaddour/minipile", split="test",
+            download_mode="force_redownload",
+        ),
+        BENCH_SAMPLE_RATIO,
     )
     ds = Dataset.from_generator(
         lambda: manual_tokenize(mp["text"], MAX_SEQ_LEN),
@@ -157,7 +230,10 @@ def build_arc():
         return
     print("Loading ARC-Challenge ...")
     arc = safe_sample(
-        load_dataset("allenai/ai2_arc", "ARC-Challenge", split="test", download_mode="force_redownload"),
+        _safe_load_dataset(
+            "allenai/ai2_arc", "ARC-Challenge", split="test",
+            download_mode="force_redownload",
+        ),
         BENCH_SAMPLE_RATIO,
     )
 
@@ -185,7 +261,10 @@ def build_race():
         return
     print("Loading RACE ...")
     race = safe_sample(
-        load_dataset("ehovy/race", "all", split="test", download_mode="force_redownload"),
+        _safe_load_dataset(
+            "ehovy/race", "all", split="test",
+            download_mode="force_redownload",
+        ),
         BENCH_SAMPLE_RATIO,
     )
 
@@ -215,7 +294,10 @@ def build_triviaqa():
         return
     print("Loading TriviaQA (mandarjoshi/trivia_qa, rc.nocontext, validation) ...")
     tr = safe_sample(
-        load_dataset("mandarjoshi/trivia_qa", "rc.nocontext", split="validation", download_mode="force_redownload"),
+        _safe_load_dataset(
+            "mandarjoshi/trivia_qa", "rc.nocontext", split="validation",
+            download_mode="force_redownload",
+        ),
         BENCH_SAMPLE_RATIO,
     )
 
@@ -263,7 +345,10 @@ def build_ambigqa():
         return
 
     print("Loading AmbigQA (sewon/ambig_qa, full, validation) ...")
-    full = load_dataset("sewon/ambig_qa", "full", split="validation", download_mode="force_redownload")
+    full = _safe_load_dataset(
+        "sewon/ambig_qa", "full", split="validation",
+        download_mode="force_redownload",
+    )
     if len(full) > AMBIGQA_MAX_EXAMPLES:
         full = full.shuffle(seed=42).select(range(AMBIGQA_MAX_EXAMPLES))
     print(f"  Using {len(full)} validation examples")

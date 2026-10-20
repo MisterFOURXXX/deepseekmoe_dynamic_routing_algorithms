@@ -18,7 +18,16 @@ from ..deepseek_baseline.model         import DeepseekForCausalLM as BaselineMod
 from ..deepseek_dynamics_routing.model import DeepseekForCausalLM as RoutingModel
 
 
+# ============================================================
 # TRANSFORMERS COMPATIBILITY SHIMS (DynamicCache)
+# ============================================================
+# The DeepSeek routing model's forward() still calls
+#   past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
+# which was removed from DynamicCache in newer transformers.
+# Re-add it (and the helpers it depends on) so the model's
+# native prepare_inputs_for_generation can pass a real
+# DynamicCache through generate().
+# ============================================================
 if not hasattr(DynamicCache, "seen_tokens"):
     DynamicCache.seen_tokens = property(lambda self: self.get_seq_length())
 
@@ -33,45 +42,6 @@ if not hasattr(DynamicCache, "get_usable_length"):
             return max_length - new_seq_length
         return prev
     DynamicCache.get_usable_length = _get_usable_length
-
-
-def _patch_dynmoe_prepare_inputs(model_cls):
-    """Convert modern DynamicCache to legacy (k, v) tuples for DynMoE."""
-    if model_cls is None or getattr(model_cls, "_dynmoe_prepare_patched", False):
-        return
-
-    def _patched(self, input_ids, past_key_values=None,
-                 attention_mask=None, **kwargs):
-        if past_key_values is not None and hasattr(past_key_values, "to_legacy_cache"):
-            past_key_values = past_key_values.to_legacy_cache()
-
-        if past_key_values is not None and not isinstance(past_key_values, (tuple, list)):
-            layers = []
-            for layer in past_key_values:
-                k = getattr(layer, "key", None)
-                v = getattr(layer, "value", None)
-                if k is None and isinstance(layer, (tuple, list)) and len(layer) >= 2:
-                    k, v = layer[0], layer[1]
-                layers.append((k, v))
-            past_key_values = tuple(layers)
-
-        if isinstance(past_key_values, (tuple, list)) and len(past_key_values) > 0:
-            if all(isinstance(p, (tuple, list)) and len(p) == 2
-                   and p[0] is None and p[1] is None for p in past_key_values):
-                past_key_values = None
-
-        if past_key_values is not None:
-            input_ids = input_ids[:, -1:]
-
-        return {
-            'input_ids': input_ids,
-            'attention_mask': attention_mask,
-            'past_key_values': past_key_values,
-            'use_cache': True,
-        }
-
-    model_cls.prepare_inputs_for_generation = _patched
-    model_cls._dynmoe_prepare_patched = True
 
 
 _ROUTING_MARKERS = (
@@ -100,6 +70,12 @@ def _resolve_classes(model_path: str):
 def load_model_and_tokenizer(model_path):
     """
     Load a fine-tuned checkpoint for evaluation.
+
+    NOTE: We do NOT patch prepare_inputs_for_generation for the
+    routing model. It uses the modern DynamicCache API and its
+    native implementation handles the Cache correctly. The
+    DynamicCache shims above are enough to keep its forward()
+    working across transformers versions.
     """
     ModelClass = _resolve_classes(model_path)
 
@@ -112,10 +88,6 @@ def load_model_and_tokenizer(model_path):
         )
         print(f"Patched {ModelClass.__name__} with GenerationMixin.")
 
-    # Patch DynMoE prepare_inputs if needed (only routing model needs it)
-    if ModelClass == RoutingModel:
-        _patch_dynmoe_prepare_inputs(ModelClass)
-
     # Use torch_dtype for transformers 4.44.2 compatibility
     model = ModelClass.from_pretrained(model_path, torch_dtype=torch.bfloat16)
     model.config.use_cache = True
@@ -127,5 +99,5 @@ def load_model_and_tokenizer(model_path):
     total_params = sum(p.numel() for p in model.parameters())
     print(f"Loaded {ModelClass.__name__} from {model_path} "
           f"({total_params:,} parameters, dtype={next(model.parameters()).dtype})")
-    
+
     return model, tok

@@ -124,18 +124,17 @@ python -m pip install -r requirements.txt
 
 **Step 4.1: Configure Paths**
 
-Update the paths for data preprocessing and to save dataset `./source/data_preprocessing/config.py`:
+Update the paths and your HuggingFace Token for download dataset, data preprocessing, and to save dataset `./source/data_preprocessing/config.py`:
 ```python
-DEFAULT_ZIP_PATH = "./deepseekmoe_dynamic_routing_algorithms/dataset/MultiWOZ-coref/MultiWOZ2_3.zip"
-DEFAULT_TRAIN_PATH = "./deepseekmoe_dynamic_routing_algorithms/dataset/train_sequences.txt"
-DEFAULT_FINE_PATH = "./deepseekmoe_dynamic_routing_algorithms/dataset/fine_sequences.txt"
-DEFAULT_EVAL_PATH = "./deepseekmoe_dynamic_routing_algorithms/dataset/eval_sequences.txt"
+HF_TOKEN     = "hf_..."                                             # Replace with your HuggingFace Token
+DATASET_ROOT = "./deepseekmoe_dynamic_routing_algorithms/dataset"   # "/content/deepseekmoe_dynamic_routing_algorithms/dataset"
+REPO_ROOT = = "./deepseekmoe_dynamic_routing_algorithms"            # "/content/deepseekmoe_dynamic_routing_algorithms"
 ```
 
 **Step 4.2: Run Preprocessing**
 
 ```bash
-cd ./deepseekmoe_dynamic_routing_algorithms/source/data_preprocessing          # Ex. cd /kaggle/working/
+cd ./deepseekmoe_dynamic_routing_algorithms/source/data_preprocessing          # Ex. cd /content/deepseekmoe_dynamic_routing_algorithms/data_preprocessing
 python3 preprocessing.py
 ```
 

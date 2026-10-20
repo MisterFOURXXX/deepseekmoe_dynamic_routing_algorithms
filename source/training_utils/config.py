@@ -8,7 +8,7 @@ import torch
 MAX_SEQ_LEN              = 256
 PER_DEVICE_BATCH         = 8
 GRAD_ACCUM               = 8
-LEARNING_RATE            = 8e-5
+LEARNING_RATE            = 3e-5   # 5e-5
 NUM_EPOCHS               = 1
 WARMUP_STEPS             = 100
 WEIGHT_DECAY             = 0.05
