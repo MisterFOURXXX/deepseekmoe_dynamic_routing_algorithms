@@ -13,7 +13,7 @@ We address these limitations by integrating DYNMoE's dynamic routing algorithm w
 - **Dynamic Routing Integration** – Replaced DeepSeekMoE's fixed Top‑K routing with DYNMoE's Top‑Any gating, enabling token‑level adaptive expert activation.
 - **Enhanced Auxiliary Loss** – Incorporated diversity and simplicity losses to promote expert orthogonality and stable routing.
 - **Adaptive Expert Tuning** – Implemented automatic expert pool resizing during training to match data complexity.
-- **Comprehensive Evaluation** – Validated improvements in computational efficiency while maintaining performance on MultiWOZ 2.3.
+- **Comprehensive Evaluation** – Evaluated on computational efficiency and model performance during training and fine tuning using the SlimPajama dataset, combined with benchmark evaluation for inference across multiple benchmarks MiniPile, ARC-Challenge, RACE, TriviaQA, and AmbigQA
 
 ---
 
@@ -22,21 +22,17 @@ We address these limitations by integrating DYNMoE's dynamic routing algorithm w
 ```text
 deepseekmoe_dynamic_routing_algorithms/
 ├── checkpoints/                          # Saved models (created during runs)
-├── dataset/                              # MultiWOZ dataset (place during setup)
+├── dataset/                              # SlimPajama & benchmark datasets (place during setup)
 │   └── Info.txt
 ├── notebooks/                            # Jupyter notebooks for experiments
-│   ├── 01_training_comparison.ipynb      # Training comparison all model architectures
-│   ├── 02_fine_tuning_comparison.ipynb   # Fine‑tuning from pre‑trained checkpoints comparison all three architectures
-│   └── 03_evaluation_comparison.ipynb    # Evaluation and comparison all model architectures
+│   ├── 01_training_comparison.ipynb      # Training comparison of model architectures
+│   ├── 02_fine_tuning_comparison.ipynb   # Fine‑tuning from pre‑trained checkpoints comparison
+│   └── 03_evaluation_comparison.ipynb    # Evaluation and comparison of model architectures
 ├── source/
 │   ├── data_preprocessing/               # Dataset loading and preprocessing
 │   │   ├── config.py
 │   │   └── preprocessing.py
 │   ├── deepseek_baseline/                # Original DeepSeekMoE (fixed Top‑K)
-│   │   ├── config.py
-│   │   └── model.py
-│   ├── DYNMoE_baseline/                  # Pure DYNMoE implementation (Phi‑2 based with DYNMoE)
-│   │   ├── adaptive_tuning.py
 │   │   ├── config.py
 │   │   └── model.py
 │   ├── deepseek_dynamics_routing/        # Our integrated prototype
@@ -83,7 +79,7 @@ git clone https://github.com/yourusername/deepseekmoe_dynamic_routing_algorithms
 In `setup.sh` at `REPO_ROOT` variable, it has to change the path to your project location.
 
 ```bash
-REPO_ROOT="./deepseekmoe_dynamic_routing_algorithms"   # Ex. cd /kaggle/working/deepseekmoe_dynamic_routing_algorithms
+REPO_ROOT="./deepseekmoe_dynamic_routing_algorithms"   # Ex. cd /content/working/deepseekmoe_dynamic_routing_algorithms
 ```
 
 **Step 3: Setup System Environment and Install Python Packages**
@@ -91,16 +87,16 @@ REPO_ROOT="./deepseekmoe_dynamic_routing_algorithms"   # Ex. cd /kaggle/working/
 **Step 3.1:** Create virtual environments
 
 ```bash
-cd ./deepseekmoe_dynamic_routing_algorithms            # Ex. cd /kaggle/working/deepseekmoe_dynamic_routing_algorithms
+cd ./deepseekmoe_dynamic_routing_algorithms            # Ex. cd /content/working/deepseekmoe_dynamic_routing_algorithms
 python3 -m venv .venv
 source .venv/bin/activate
-python --version                  # should print Python 3.xx.xx
+python --version                                       # should print Python 3.xx.xx
 ```
 
 **Step 3.2:** Setup all environments and packages
 
 ```bash
-cd ./deepseekmoe_dynamic_routing_algorithms            # Ex. cd /kaggle/working/deepseekmoe_dynamic_routing_algorithms
+cd ./deepseekmoe_dynamic_routing_algorithms            # Ex. cd /content/working/deepseekmoe_dynamic_routing_algorithms
 chmod +x setup.sh
 bash setup.sh
 ```
@@ -108,7 +104,7 @@ bash setup.sh
 If there is any package import errors when running notebook experiments, please try:
 
 ```bash
-cd ./deepseekmoe_dynamic_routing_algorithms            # Ex. cd /kaggle/working/deepseekmoe_dynamic_routing_algorithms
+cd ./deepseekmoe_dynamic_routing_algorithms            # Ex. cd /content/working/deepseekmoe_dynamic_routing_algorithms
 python -m pip install --upgrade pip setuptools wheel
 # Uninstall previous version to prevent import errors and prevent conflicts
 python -m pip uninstall -y transformers huggingface-hub tokenizers torch torchvision torchaudio 
@@ -124,7 +120,7 @@ python -m pip install -r requirements.txt
 
 **Step 4.1: Configure Paths**
 
-Update the paths and your HuggingFace Token for download dataset, data preprocessing, and to save dataset `./source/data_preprocessing/config.py`:
+Update the paths and your HuggingFace Token for downloading the SlimPajama and benchmark datasets, data preprocessing, and to save the datasets in `./source/data_preprocessing/config.py`:
 ```python
 HF_TOKEN     = "hf_..."                                             # Replace with your HuggingFace Token
 DATASET_ROOT = "./deepseekmoe_dynamic_routing_algorithms/dataset"   # "/content/deepseekmoe_dynamic_routing_algorithms/dataset"
@@ -143,9 +139,8 @@ python3 preprocessing.py
 Update the output paths in `source/training_utils/config.py`:
 
 ```python
-OUTPUT_BASELINE = "./deepseekmoe_dynamic_routing_algorithms/checkpoints/baseline"
-OUTPUT_DYNMOE_BASE = "./deepseekmoe_dynamic_routing_algorithms/checkpoints/dynmoe_baseline"
-OUTPUT_DEEPSEEK_DYNMOE = "./deepseekmoe_dynamic_routing_algorithms/checkpoints/dynmoe_routing"
+OUTPUT_BASELINE = "./deepseekmoe_dynamic_routing_algorithms/checkpoints/baseline"                   # Ex. "/content/deepseekmoe_dynamic_routing_algorithms/checkpoints/baseline"
+OUTPUT_DEEPSEEK_DYNMOE = "./deepseekmoe_dynamic_routing_algorithms/checkpoints/dynmoe_routing"      # Ex. "/content/deepseekmoe_dynamic_routing_algorithms/checkpoints/dynmoe_routing"
 ```
 
 The repository will automatically config all training, fine-tuning, and evaluation paths for all models.
@@ -160,43 +155,43 @@ All experiments are organized as Jupyter notebooks in the `./deepseekmoe_dynamic
 
 **01_training_comparison.ipynb – Pre‑training**
 
-Trains all three models **from scratch** on the MultiWOZ 2.3 dataset:
+Trains both models **from scratch** on the SlimPajama dataset, which is split into training, fine-tuning, and validation sets. All text sequences are tokenized using the DeepSeekMoE tokenizer (BPE) and truncated to a maximum sequence length. Both models are validated at the end of each epoch.
 
 - **DeepSeekMoE Baseline**: DeepSeekMoE with fixed Top‑K (K=2)
-- **DYNMoE Baseline**: DYNMoE (Phi‑2 architecture) with Top‑Any gating, following "Dynamic Mixture of Experts: An Auto-Tuning Approach for Efficient Transformer Models" paper
-- **Prototype**: Our integrated DeepSeekMoE with DYNMoE routing
+- **Prototype**: Our integrated DeepSeekMoE with DYNMoE routing. It matches standard transformer hyperparameters with 2 shared experts and an initial pool of 8 routed experts per layer. Routing thresholds are initialized to -1.35, dynamically activating between 1 and 6 routed experts with periodic adaptive tuning and an inference fallback safeguard.
 
-**Outputs:** Checkpoints saved in `checkpoints/baseline/`, `checkpoints/dynmoe_baseline/`, and `checkpoints/dynmoe_routing/`.
+**Outputs:** Checkpoints saved in `checkpoints/baseline/` and `checkpoints/dynmoe_routing/`.
 
 **02_fine_tuning_comparison.ipynb – Fine‑tuning**
 
-Loads the pre‑trained checkpoints and fine‑tunes them on the same dataset with a lower learning rate and smaller batch size.
+Loads the pre‑trained checkpoints and fine‑tunes them on the same dataset with a lower learning rate and smaller batch size. Both models are validated at the end of each epoch during fine-tuning.
 
-**Outputs:** Fine‑tuned models saved in `checkpoints/baseline-ft/`, `checkpoints/dynmoe_baseline-ft/`, and `checkpoints/dynmoe_routing-ft/`.
+**Outputs:** Fine‑tuned models saved in `checkpoints/baseline-ft/` and `checkpoints/dynmoe_routing-ft/`.
 
 **03_evaluation_comparison.ipynb – Evaluation**
 
-Evaluates all three fine‑tuned models on the test set, computing:
-- Perplexity
-- ROUGE-1/2/L and BLEU scores
-- Expert load balance (MaxVio global and batch)
-- Computational metrics (FLOPs, active parameters, average activated experts)
-- Hardware usage (GPU memory, CPU usage)
+Evaluates both fine‑tuned models on the test sets, comprehensively measuring three key dimensions:
+
+1. **Expert load balance:** Utilizes the Maximal Violation (MaxVio) metric across batches to detect routing collapse and quantify expert load distribution.
+2. **Computational efficiency:** Tracks hardware resource usage (GPU/CPU memory and utilization) via PyTorch tooling, NVIDIA-SMI, and psutil. Efficiency is quantified using active versus total parameter ratios, training GFLOPs per step, and inference GFLOP throughput.
+3. **Model performance:** Assesses language modeling capability across three domains:
+   - **Language Modeling:** Loss and perplexity on SlimPajama during training/fine-tuning, and perplexity on MiniPile during evaluation.
+   - **Reasoning and Reading Comprehension:** Accuracy on ARC-Challenge and RACE benchmarks (comparing baseline and prototype outputs to the dataset answers).
+   - **Closed-book Question Answering:** Exact Match (EM) rate on TriviaQA and AmbigQA.
 
 **Customising Hyperparameters**
 
-All configurable parameters are centralised in the `config.py` files under each model architecture and utility folder (e.g., `source/training_utils/config.py` and `source/DYNMoE_baseline/config.py`).
-
+All configurable parameters are centralised in the `config.py` files under each model architecture and utility folder (e.g., `source/training_utils/config.py` and `source/deepseek_dynamics_routing/config.py`).
 
 **Memory Management**
 
 The repository provides a dedicated `source/memory_utils.py` module to clean up GPU and CPU memory between experiments. The `cleanup_trainer(trainer)` function deletes the model and trainer objects, clears CUDA caches, and destroys the distributed process group. The `clear_cached_data()` function releases the global dataset cache. All training and fine‑tuning runners automatically call these cleanup functions after each run, making it safe to run multiple experiments sequentially without restarting the kernel.
 
-However, to ensure fair results of each model comparison and avoid errors, restart kernel after each model is required. 
+However, to ensure fair results of each model comparison and avoid errors, restarting the kernel after each model is required. 
 
 **Important Note** 
 
-You must restart the kernel before running each model (DeepSeekMoE Baseline, DYNMoE Baseline, and Prototype) in each notebook to:
+You must restart the kernel before running each model (DeepSeekMoE Baseline and Prototype) in each notebook to:
 - Clear GPU memory
 - Remove cached tensors
 - Avoid out-of-memory (OOM) errors

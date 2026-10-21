@@ -184,7 +184,7 @@ def train_model(
     config.bos_token_id = tokenizer.bos_token_id
     config.eos_token_id = tokenizer.eos_token_id
 
-    # Patch GenerationMixin (Jupyter notebook logic)
+    # Patch GenerationMixin 
     if not issubclass(ModelClass, GenerationMixin):
         ModelClass = type(
             ModelClass.__name__,

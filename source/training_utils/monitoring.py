@@ -201,15 +201,14 @@ class MoEMetricsCallback(TrainerCallback):
                 layer_expert_counts.append(arr)
                 def val_hook_fn(module, input, output):
                     nonlocal arr
-                    # --- CORRECTED weight extraction (same as working version) ---
+                    # Weight extraction
                     if len(output) >= 2 and isinstance(output[1], torch.Tensor):
                         weights = output[1]
                     elif len(output) >= 1 and isinstance(output[0], torch.Tensor):
                         weights = output[0]
                     else:
                         return
-                    # --- Sum over all dimensions EXCEPT the last (expert dimension) ---
-                    # This yields a 1D array of length `size` regardless of input rank.
+                    # Sum over all dimensions EXCEPT the last (expert dimension)
                     reduce_dims = tuple(range(weights.dim() - 1))
                     activated = (weights > 1e-8).float()
                     counts = activated.sum(dim=reduce_dims).detach().cpu().numpy()

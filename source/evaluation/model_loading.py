@@ -1,6 +1,3 @@
-# ============================================================
-# evaluation/model_loading.py
-# ============================================================
 import sys
 sys.path.append("..")
 
@@ -17,17 +14,7 @@ from transformers.generation.utils import GenerationMixin
 from ..deepseek_baseline.model         import DeepseekForCausalLM as BaselineModel
 from ..deepseek_dynamics_routing.model import DeepseekForCausalLM as RoutingModel
 
-
-# ============================================================
 # TRANSFORMERS COMPATIBILITY SHIMS (DynamicCache)
-# ============================================================
-# The DeepSeek routing model's forward() still calls
-#   past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
-# which was removed from DynamicCache in newer transformers.
-# Re-add it (and the helpers it depends on) so the model's
-# native prepare_inputs_for_generation can pass a real
-# DynamicCache through generate().
-# ============================================================
 if not hasattr(DynamicCache, "seen_tokens"):
     DynamicCache.seen_tokens = property(lambda self: self.get_seq_length())
 

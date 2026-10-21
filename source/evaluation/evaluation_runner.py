@@ -1,6 +1,3 @@
-# ============================================================
-# evaluation/evaluation_runner.py
-# ============================================================
 import sys
 sys.path.append("..")
 
@@ -101,8 +98,8 @@ def evaluate_all_finetuned_models():
     print("# RUNNING ALL FINE-TUNED MODEL EVALUATIONS")
     print("#" * 80)
     
-    # 1. Baseline
+    # Baseline
     run_evaluate(FINAL_FT_BASELINE, label="Baseline Fine-Tuned")
     
-    # 2. DeepSeek Dynamics Routing
+    # DeepSeek Dynamics Routing
     run_evaluate(FINAL_FT_DYNMOE_ROUTING, label="DYNMoE Routing Fine-Tuned")

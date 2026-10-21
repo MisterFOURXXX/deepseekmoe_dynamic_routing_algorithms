@@ -1,6 +1,3 @@
-# ============================================================
-# source/data_preprocessing/preprocessing.py
-# ============================================================
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -25,15 +22,15 @@ from config import (
     DATASET_ROOT, PATHS, DEFAULT_TOKENIZER_PATH, REPO_ROOT
 )
 
-# Redirect HF cache (so corrupt global cache doesn't affect us)
+# Redirect HF cache
 os.environ["HF_DATASETS_CACHE"]                 = REPO_ROOT + "/hf_cache"
 
 disable_progress_bar()
 
-# --- Auth ---
+# Auth
 login(token=HF_TOKEN)
 
-# --- Tokenizer (single save) ---
+# Tokenizer 
 os.makedirs(DEFAULT_TOKENIZER_PATH, exist_ok=True)
 tokenizer = AutoTokenizer.from_pretrained(
     TOKENIZER_NAME, trust_remote_code=True, use_fast=True,
@@ -44,9 +41,7 @@ tokenizer.save_pretrained(DEFAULT_TOKENIZER_PATH)
 print(f"Tokenizer saved to {DEFAULT_TOKENIZER_PATH}")
 
 
-# ------------------------------------------------------------
 # Corruption recovery helpers
-# ------------------------------------------------------------
 def _dataset_saved(path):
     """
     True only if a saved dataset exists AND can be loaded.
@@ -117,7 +112,7 @@ def _safe_load_dataset(*args, **kwargs):
         return load_dataset(*args, **kwargs)
 
 
-# --- Helpers ---
+# Helpers
 def safe_sample(ds, ratio, min_n=1):
     n = max(min_n, int(len(ds) * ratio))
     return ds.shuffle(seed=42).select(range(min(n, len(ds))))
@@ -159,7 +154,7 @@ QA_FEATURES = Features({
 })
 
 
-# --- SlimPajama splits ---
+# SlimPajama splits
 def build_slimpajama():
     keys = ["slimpajama_train", "slimpajama_finetune", "slimpajama_val"]
     if all(_dataset_saved(PATHS[k]) for k in keys):
@@ -202,7 +197,7 @@ def build_slimpajama():
         print(f"  Saved to {PATHS[name]}")
 
 
-# --- MiniPile ---
+# MiniPile
 def build_minipile():
     if _dataset_saved(PATHS["minipile"]):
         print("MiniPile already exists - skipping.")
@@ -223,7 +218,7 @@ def build_minipile():
     print(f"MiniPile ({len(ds)}) saved to {PATHS['minipile']}")
 
 
-# --- ARC ---
+# ARC
 def build_arc():
     if _dataset_saved(PATHS["arc"]):
         print("ARC already exists - skipping.")
@@ -254,7 +249,7 @@ def build_arc():
     print(f"ARC ({len(ds)}) saved to {PATHS['arc']}")
 
 
-# --- RACE ---
+# RACE
 def build_race():
     if _dataset_saved(PATHS["race"]):
         print("RACE already exists - skipping.")
@@ -287,7 +282,7 @@ def build_race():
     print(f"RACE ({len(ds)}) saved to {PATHS['race']}")
 
 
-# --- TriviaQA ---
+# TriviaQA
 def build_triviaqa():
     if _dataset_saved(PATHS["triviaqa"]):
         print("TriviaQA already exists - skipping.")
@@ -313,7 +308,7 @@ def build_triviaqa():
     print(f"TriviaQA ({len(ds)}) saved to {PATHS['triviaqa']}")
 
 
-# --- AmbigQA ---
+# AmbigQA
 def _flatten_answers(value):
     if isinstance(value, str):
         s = value.strip()

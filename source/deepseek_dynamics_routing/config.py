@@ -14,9 +14,9 @@ CLEAR_CACHE_EVERY = 150          # memory-cache clearing interval (Section 3.4)
 # Routing Parameters Defaults (Sections 3.1 and 3.2)
 MAX_ROUTED_EXPERTS   = 8        # upper bound on routed expert pool (Section 3.4)
 MIN_ROUTED_EXPERTS   = 0.25        # lower bound on routed expert pool (Section 3.4)
-MAX_ACTIVE_K         = 6        # maximum activated routed experts per token # 6
+MAX_ACTIVE_K         = 6        # maximum activated routed experts per token # 5
 MIN_ACTIVE_K         = 0.25        # Minimum threshold for zero-activation guard (test-time safeguard, Eq. 5)
-DYNMOE_THRESHOLD_INIT = -5.85    # initial raw threshold G_j before sigmoid (Eq. 2/3) # 3.85, 0.65, -1.35
+DYNMOE_THRESHOLD_INIT = -5.85    # initial raw threshold G_j before sigmoid (Eq. 2/3)
 BIAS_UPDATE_RATE     = 0.000001   # Learning rate for bias updates (Eq. 11) # 0.00001
 
 logger = logging.get_logger(__name__)

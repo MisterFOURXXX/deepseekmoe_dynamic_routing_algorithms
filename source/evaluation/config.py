@@ -1,6 +1,3 @@
-# ============================================================
-# evaluation/config.py
-# ============================================================
 import os
 from ..fine_tuning_utils import (
     OUTPUT_FT_BASELINE,
