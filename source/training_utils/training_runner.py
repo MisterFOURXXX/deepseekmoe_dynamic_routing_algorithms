@@ -193,8 +193,13 @@ def train_model(
     ds_config = kwargs.pop("ds_config", None)
     if ds_config is None:
         ds_config = _build_ds_config(per_device_batch, grad_accum)
+    # Note: TrainingArguments natively accepts either a dict or a str path for deepspeed.
 
     # Remaining kwargs are model-config overrides
+    # Map uppercase MIN_ROUTED_EXPERTS to lowercase expected by DynmoeConfig
+    if "MIN_ROUTED_EXPERTS" in kwargs:
+        kwargs["min_routed_experts"] = kwargs.pop("MIN_ROUTED_EXPERTS")
+    
     model_config_kwargs = kwargs
 
     # Prepare data 
@@ -263,7 +268,7 @@ def train_model(
         metric_for_best_model="eval_loss",
         greater_is_better=False,
         report_to="none",
-        deepspeed=ds_config, # Passed as dict
+        deepspeed=ds_config, 
         ddp_find_unused_parameters=False if world_size > 1 else None,
         gradient_checkpointing=False,
         dataloader_num_workers=2,

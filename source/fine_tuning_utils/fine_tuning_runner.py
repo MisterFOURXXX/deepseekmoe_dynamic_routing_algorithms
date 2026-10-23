@@ -141,10 +141,13 @@ def fine_tune_model(pretrained_path, output_dir, **kwargs):
 
     # DeepSpeed Configuration Save to JSON
     os.makedirs(output_dir, exist_ok=True)
-    ds_config_path = os.path.join(output_dir, "ds_config_finetune.json")
-    with open(ds_config_path, "w") as f:
-        json.dump(ds_config, f, indent=2)
-    print(f"Wrote DeepSpeed config to {ds_config_path}")
+    if isinstance(ds_config, str):
+        ds_config_path = ds_config
+    else:
+        ds_config_path = os.path.join(output_dir, "ds_config_finetune.json")
+        with open(ds_config_path, "w") as f:
+            json.dump(ds_config, f, indent=2)
+    print(f"Using DeepSpeed config at {ds_config_path}")
 
     # Callbacks 
     resource_monitor = ResourceMonitorCallback()
@@ -195,7 +198,7 @@ def fine_tune_model(pretrained_path, output_dir, **kwargs):
         metric_for_best_model="eval_loss",
         greater_is_better=False,
         report_to="none",
-        deepspeed=ds_config_path, # Passed as JSON path
+        deepspeed=ds_config_path, 
         ddp_find_unused_parameters=False if world_size > 1 else None,
         gradient_checkpointing=False,
         dataloader_num_workers=2,
