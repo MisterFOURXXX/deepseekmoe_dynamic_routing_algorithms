@@ -47,6 +47,7 @@ warnings.filterwarnings("ignore", category=UserWarning)
 
 
 def _build_ds_config(per_device_batch, grad_accum):
+    """Fallback DeepSpeed configuration if none is passed from the notebook."""
     return {
         "train_batch_size": per_device_batch * max(world_size, 1) * grad_accum,
         "train_micro_batch_size_per_gpu": per_device_batch,
@@ -188,6 +189,11 @@ def train_model(
     bias_update_interval = kwargs.pop("BIAS_UPDATE_INTERVAL", BIAS_UPDATE_INTERVAL)
     clear_cache_every   = kwargs.pop("CLEAR_CACHE_EVERY", CLEAR_CACHE_EVERY)
 
+    # Resolve DeepSpeed Config
+    ds_config = kwargs.pop("ds_config", None)
+    if ds_config is None:
+        ds_config = _build_ds_config(per_device_batch, grad_accum)
+
     # Remaining kwargs are model-config overrides
     model_config_kwargs = kwargs
 
@@ -233,8 +239,6 @@ def train_model(
     print(f" Model architecture  :\n{model}\n")
 
     # Training Arguments
-    ds_config = _build_ds_config(per_device_batch, grad_accum)
-
     training_args = TrainingArguments(
         output_dir=output_dir,
         num_train_epochs=num_epochs,
@@ -259,7 +263,7 @@ def train_model(
         metric_for_best_model="eval_loss",
         greater_is_better=False,
         report_to="none",
-        deepspeed=ds_config,
+        deepspeed=ds_config, # Passed as dict
         ddp_find_unused_parameters=False if world_size > 1 else None,
         gradient_checkpointing=False,
         dataloader_num_workers=2,

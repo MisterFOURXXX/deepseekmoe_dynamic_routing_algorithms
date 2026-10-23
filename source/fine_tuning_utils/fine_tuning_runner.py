@@ -60,6 +60,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 
 def _build_ds_config(per_device_batch, grad_accum):
+    """Fallback DeepSpeed configuration if none is passed from the notebook."""
     return {
         "train_batch_size": per_device_batch * max(world_size, 1) * grad_accum,
         "train_micro_batch_size_per_gpu": per_device_batch,
@@ -103,6 +104,11 @@ def fine_tune_model(pretrained_path, output_dir, **kwargs):
     early_stopping_patience  = kwargs.pop("EARLY_STOPPING_PATIENCE", EARLY_STOPPING_PATIENCE)
     early_stopping_threshold = kwargs.pop("EARLY_STOPPING_THRESHOLD", EARLY_STOPPING_THRESHOLD)
 
+    # Resolve DeepSpeed Config
+    ds_config = kwargs.pop("ds_config", None)
+    if ds_config is None:
+        ds_config = _build_ds_config(per_device_batch, grad_accum)
+
     # Load Model and Tokenizer
     print(f"Loading pretrained model from {pretrained_path} ...")
     model, tokenizer = load_model_and_tokenizer(pretrained_path)
@@ -133,9 +139,8 @@ def fine_tune_model(pretrained_path, output_dir, **kwargs):
     print(f"  Trainable parameters : {trainable_params:,}")
     print(f"  Model architecture:\n{model}\n")
 
-    # DeepSpeed Configuration (rebuilt with resolved values)
+    # DeepSpeed Configuration Save to JSON
     os.makedirs(output_dir, exist_ok=True)
-    ds_config = _build_ds_config(per_device_batch, grad_accum)
     ds_config_path = os.path.join(output_dir, "ds_config_finetune.json")
     with open(ds_config_path, "w") as f:
         json.dump(ds_config, f, indent=2)
@@ -190,7 +195,7 @@ def fine_tune_model(pretrained_path, output_dir, **kwargs):
         metric_for_best_model="eval_loss",
         greater_is_better=False,
         report_to="none",
-        deepspeed=ds_config_path,
+        deepspeed=ds_config_path, # Passed as JSON path
         ddp_find_unused_parameters=False if world_size > 1 else None,
         gradient_checkpointing=False,
         dataloader_num_workers=2,
