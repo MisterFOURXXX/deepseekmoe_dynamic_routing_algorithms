@@ -42,14 +42,12 @@ def run_evaluate(model_path, label="Fine-tuned Model"):
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     
-    # Load benchmarks from disk
+    # Load benchmarks from disk (RACE and AmbigQA removed)
     print("Loading benchmark datasets from disk...")
     datasets_to_run = [
         ("minipile",   load_from_disk(_p("minipile"))),
         ("arc",        load_from_disk(_p("arc"))),
-        ("race",       load_from_disk(_p("race"))),
         ("triviaqa",   load_from_disk(_p("triviaqa"))),
-        ("ambigqa",    load_from_disk(_p("ambigqa"))),
     ]
 
     for name, ds in datasets_to_run:

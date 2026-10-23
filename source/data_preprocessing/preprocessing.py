@@ -18,7 +18,7 @@ from huggingface_hub import login
 
 from config import (
     HF_TOKEN, TOKENIZER_NAME, MAX_SEQ_LEN,
-    SAMPLE_RATIO, BENCH_SAMPLE_RATIO, AMBIGQA_MAX_EXAMPLES,
+    SAMPLE_RATIO, BENCH_SAMPLE_RATIO,
     DATASET_ROOT, PATHS, DEFAULT_TOKENIZER_PATH, REPO_ROOT
 )
 
@@ -249,39 +249,6 @@ def build_arc():
     print(f"ARC ({len(ds)}) saved to {PATHS['arc']}")
 
 
-# RACE
-def build_race():
-    if _dataset_saved(PATHS["race"]):
-        print("RACE already exists - skipping.")
-        return
-    print("Loading RACE ...")
-    race = safe_sample(
-        _safe_load_dataset(
-            "ehovy/race", "all", split="test",
-            download_mode="force_redownload",
-        ),
-        BENCH_SAMPLE_RATIO,
-    )
-
-    def fmt(ex):
-        o = list(ex["options"])
-        prompt = (
-            f"Article: {ex['article']}\n"
-            f"Question: {ex['question']}\n"
-            f"Options:\nA) {o[0]}\nB) {o[1]}\nC) {o[2]}\nD) {o[3]}\n"
-            f"Answer:"
-        )
-        return {"prompt": prompt,
-                "choices": o,
-                "choice_labels": ["A", "B", "C", "D"],
-                "label": ex["answer"]}
-
-    ds = race.map(fmt, remove_columns=race.column_names,
-                  features=MC_FEATURES, num_proc=1)
-    ds.save_to_disk(PATHS["race"])
-    print(f"RACE ({len(ds)}) saved to {PATHS['race']}")
-
-
 # TriviaQA
 def build_triviaqa():
     if _dataset_saved(PATHS["triviaqa"]):
@@ -308,65 +275,11 @@ def build_triviaqa():
     print(f"TriviaQA ({len(ds)}) saved to {PATHS['triviaqa']}")
 
 
-# AmbigQA
-def _flatten_answers(value):
-    if isinstance(value, str):
-        s = value.strip()
-        return [s] if s else []
-    if isinstance(value, (list, tuple)):
-        out = []
-        for item in value:
-            out.extend(_flatten_answers(item))
-        return out
-    return []
-
-
-def _collect_ambigqa_answers(example):
-    annotations = example["annotations"]
-    answers = set()
-    for i, ann_type in enumerate(annotations["type"]):
-        if ann_type == "singleAnswer":
-            answers.update(_flatten_answers(annotations["answer"][i]))
-        else:
-            qa_pair = annotations["qaPairs"][i]
-            answers.update(_flatten_answers(qa_pair["answer"]))
-    answers.update(_flatten_answers(example["nq_answer"]))
-    return sorted(answers) or [""]
-
-
-def build_ambigqa():
-    if _dataset_saved(PATHS["ambigqa"]):
-        print("AmbigQA already exists - skipping.")
-        return
-
-    print("Loading AmbigQA (sewon/ambig_qa, full, validation) ...")
-    full = _safe_load_dataset(
-        "sewon/ambig_qa", "full", split="validation",
-        download_mode="force_redownload",
-    )
-    if len(full) > AMBIGQA_MAX_EXAMPLES:
-        full = full.shuffle(seed=42).select(range(AMBIGQA_MAX_EXAMPLES))
-    print(f"  Using {len(full)} validation examples")
-
-    records = [
-        {
-            "prompt":  f"Question: {ex['question'].strip()}\nAnswer:",
-            "answers": _collect_ambigqa_answers(ex),
-        }
-        for ex in full
-    ]
-    ds = Dataset.from_list(records, features=QA_FEATURES)
-    ds.save_to_disk(PATHS["ambigqa"])
-    print(f"AmbigQA ({len(ds)}) saved to {PATHS['ambigqa']}")
-
-
 if __name__ == "__main__":
     build_slimpajama()
     build_minipile()
     build_arc()
-    build_race()
     build_triviaqa()
-    build_ambigqa()
 
     print("\n" + "=" * 60)
     print("All tokenized datasets saved under:", DATASET_ROOT)

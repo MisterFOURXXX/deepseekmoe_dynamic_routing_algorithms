@@ -224,8 +224,8 @@ def evaluate_model(model, tokenizer, dataset_name, dataset, device, **kwargs):
         task_metrics["Perplexity"] = f"{perplexity:.2f}"
         measured_flops = flop_counter.get_total_flops()
 
-    # Multiple-Choice Accuracy (ARC / RACE)
-    elif dataset_name in ("arc", "race"):
+    # Multiple-Choice Accuracy (ARC)
+    elif dataset_name == "arc":
         correct = 0
         total   = 0
         flop_counter = FlopCounterMode(display=False)
@@ -269,8 +269,8 @@ def evaluate_model(model, tokenizer, dataset_name, dataset, device, **kwargs):
         task_metrics["Accuracy"] = f"{acc:.4f}"
         measured_flops = flop_counter.get_total_flops()
 
-    # Generative QA EM / F1 (TriviaQA / AmbigQA)
-    elif dataset_name in ("triviaqa", "ambigqa", "nq"):
+    # Generative QA EM / F1 (TriviaQA / NQ)
+    elif dataset_name in ("triviaqa", "nq"):
         em_scores, f1_scores = [], []
         flop_counter = FlopCounterMode(display=False)
         with flop_counter:
