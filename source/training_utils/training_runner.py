@@ -45,25 +45,26 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 
-# DeepSpeed configuration (ZeRO-2 + bf16)
-ds_config = {
-    "train_batch_size": PER_DEVICE_BATCH * max(world_size, 1) * GRAD_ACCUM,
-    "train_micro_batch_size_per_gpu": PER_DEVICE_BATCH,
-    "gradient_accumulation_steps": GRAD_ACCUM,
-    "bf16": {"enabled": True},
-    "zero_optimization": {
-        "stage": 2,
-        "offload_optimizer": {"device": "cpu", "pin_memory": True},
-        "overlap_comm": True,
-        "contiguous_gradients": True,
-        "reduce_bucket_size": 5e8,
-        "allgather_bucket_size": 5e8,
-    },
-    "gradient_clipping": 1.0,
-    "steps_per_print": 10,
-    "wall_clock_breakdown": False,
-    "zero_allow_untested_optimizer": True,
-}
+
+def _build_ds_config(per_device_batch, grad_accum):
+    return {
+        "train_batch_size": per_device_batch * max(world_size, 1) * grad_accum,
+        "train_micro_batch_size_per_gpu": per_device_batch,
+        "gradient_accumulation_steps": grad_accum,
+        "bf16": {"enabled": True},
+        "zero_optimization": {
+            "stage": 2,
+            "offload_optimizer": {"device": "cpu", "pin_memory": True},
+            "overlap_comm": True,
+            "contiguous_gradients": True,
+            "reduce_bucket_size": 5e8,
+            "allgather_bucket_size": 5e8,
+        },
+        "gradient_clipping": 1.0,
+        "steps_per_print": 10,
+        "wall_clock_breakdown": False,
+        "zero_allow_untested_optimizer": True,
+    }
 
 
 def _class_uses_dynmoe(cls):
@@ -167,7 +168,30 @@ def train_model(
     tokenizer=None, tokenized_datasets=None, data_collator=None,
     data_file_path=None, val_data_file_path=None,
     tokenizer_name=None, split_ratio=0.9, random_seed=42,
+    **kwargs,
 ):
+    # Resolve Training Hyperparameters 
+    max_seq_len              = kwargs.pop("MAX_SEQ_LEN", MAX_SEQ_LEN)
+    per_device_batch         = kwargs.pop("PER_DEVICE_BATCH", PER_DEVICE_BATCH)
+    grad_accum               = kwargs.pop("GRAD_ACCUM", GRAD_ACCUM)
+    learning_rate            = kwargs.pop("LEARNING_RATE", LEARNING_RATE)
+    num_epochs               = kwargs.pop("NUM_EPOCHS", NUM_EPOCHS)
+    warmup_steps             = kwargs.pop("WARMUP_STEPS", WARMUP_STEPS)
+    weight_decay             = kwargs.pop("WEIGHT_DECAY", WEIGHT_DECAY)
+    early_stopping_patience  = kwargs.pop("EARLY_STOPPING_PATIENCE", EARLY_STOPPING_PATIENCE)
+    early_stopping_threshold = kwargs.pop("EARLY_STOPPING_THRESHOLD", EARLY_STOPPING_THRESHOLD)
+
+    # Resolve Adaptive-Tuning Hyperparameters for DYNMoE
+    audit_steps         = kwargs.pop("AUDIT_STEPS", AUDIT_STEPS)
+    prune_threshold     = kwargs.pop("PRUNE_THRESHOLD", PRUNE_THRESHOLD)
+    min_active_experts  = kwargs.pop("MIN_ACTIVE_EXPERTS", MIN_ACTIVE_EXPERTS)
+    bias_update_interval = kwargs.pop("BIAS_UPDATE_INTERVAL", BIAS_UPDATE_INTERVAL)
+    clear_cache_every   = kwargs.pop("CLEAR_CACHE_EVERY", CLEAR_CACHE_EVERY)
+
+    # Remaining kwargs are model-config overrides
+    model_config_kwargs = kwargs
+
+    # Prepare data 
     if tokenizer is None or tokenized_datasets is None or data_collator is None:
         tokenizer, tokenized_datasets, data_collator = _prepare_data(
             data_file_path=data_file_path,
@@ -176,15 +200,15 @@ def train_model(
             tokenizer_name=tokenizer_name,
             split_ratio=split_ratio,
             random_seed=random_seed,
+            max_seq_len=max_seq_len,
         )
 
-    # Instantiate model 
-    config = ConfigClass()
+    # Instantiate model with config overrides 
+    config = ConfigClass(**model_config_kwargs)
     config.pad_token_id = tokenizer.pad_token_id
     config.bos_token_id = tokenizer.bos_token_id
     config.eos_token_id = tokenizer.eos_token_id
 
-    # Patch GenerationMixin 
     if not issubclass(ModelClass, GenerationMixin):
         ModelClass = type(
             ModelClass.__name__,
@@ -208,16 +232,18 @@ def train_model(
     print(f" Trainable parameters: {trainable_params:,}")
     print(f" Model architecture  :\n{model}\n")
 
-    # TrainingArguments
+    # Training Arguments
+    ds_config = _build_ds_config(per_device_batch, grad_accum)
+
     training_args = TrainingArguments(
         output_dir=output_dir,
-        num_train_epochs=NUM_EPOCHS,
-        per_device_train_batch_size=PER_DEVICE_BATCH,
-        per_device_eval_batch_size=PER_DEVICE_BATCH,
-        gradient_accumulation_steps=GRAD_ACCUM,
-        learning_rate=LEARNING_RATE,
-        weight_decay=WEIGHT_DECAY,
-        warmup_steps=WARMUP_STEPS,
+        num_train_epochs=num_epochs,
+        per_device_train_batch_size=per_device_batch,
+        per_device_eval_batch_size=per_device_batch,
+        gradient_accumulation_steps=grad_accum,
+        learning_rate=learning_rate,
+        weight_decay=weight_decay,
+        warmup_steps=warmup_steps,
         max_grad_norm=1.0,
         lr_scheduler_type="cosine",
         fp16=False,
@@ -244,28 +270,29 @@ def train_model(
         save_only_model=True,
     )
 
-    # Callbacks 
+    # Callbacks
     resource_monitor = ResourceMonitorCallback()
     moemetrics = MoEMetricsCallback(
         tokenized_datasets["validation"], tokenizer, data_collator,
-        early_stop_patience=EARLY_STOPPING_PATIENCE,
-        early_stop_threshold=EARLY_STOPPING_THRESHOLD,
+        early_stop_patience=early_stopping_patience,
+        early_stop_threshold=early_stopping_threshold,
     )
     callbacks = [resource_monitor, moemetrics]
 
     if is_dynmoe:
         adaptive_callback = DynmoeRoutingCallback(
-            audit_steps=AUDIT_STEPS,
-            prune_threshold=PRUNE_THRESHOLD,
-            min_active_experts=MIN_ACTIVE_EXPERTS,
-            bias_update_interval=BIAS_UPDATE_INTERVAL,
-            clear_cache_every=CLEAR_CACHE_EVERY,
+            audit_steps=audit_steps,
+            prune_threshold=prune_threshold,
+            min_active_experts=min_active_experts,
+            bias_update_interval=bias_update_interval,
+            clear_cache_every=clear_cache_every,
         )
         callbacks.append(adaptive_callback)
         print("AdaptiveExpertTuningCallback enabled.")
     else:
         print("Adaptive expert tuning disabled for this run.")
 
+    # Trainer
     trainer = Trainer(
         model=model,
         args=training_args,
@@ -280,8 +307,8 @@ def train_model(
     train_result = trainer.train()
     eval_results = trainer.evaluate()
 
-    final_loss   = eval_results.get("eval_loss", float("inf"))
-    perplexity   = math.exp(final_loss) if 0 < final_loss < 30 else float("inf")
+    final_loss = eval_results.get("eval_loss", float("inf"))
+    perplexity = math.exp(final_loss) if 0 < final_loss < 30 else float("inf")
     print(f"Final validation loss: {final_loss:.4f}")
     print(f"Validation Perplexity: {perplexity:.2f}")
 
@@ -298,6 +325,7 @@ def run_training(
     tokenizer=None, tokenized_datasets=None, data_collator=None,
     data_file_path=None, val_data_file_path=None,
     tokenizer_name=None, split_ratio=0.9, random_seed=42,
+    **kwargs,
 ):
     print("=" * 60)
     print(f"TRAINING {ModelClass.__name__}")
@@ -313,6 +341,7 @@ def run_training(
         tokenizer_name=tokenizer_name,
         split_ratio=split_ratio,
         random_seed=random_seed,
+        **kwargs,
     )
 
     cleanup_trainer(trainer)

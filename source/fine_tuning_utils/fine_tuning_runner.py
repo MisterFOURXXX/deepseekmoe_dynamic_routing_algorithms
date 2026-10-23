@@ -1,3 +1,4 @@
+# source/fine_tuning_utils/fine_tuning_runner.py
 import sys
 sys.path.append("..")
 
@@ -29,11 +30,11 @@ from .config import (
     WEIGHT_DECAY,
     EARLY_STOPPING_PATIENCE,
     EARLY_STOPPING_THRESHOLD,
-    world_size
+    world_size,
 )
 from ..data_preprocessing import (
     DEFAULT_FINE_PATH,
-    DEFAULT_VAL_PATH
+    DEFAULT_VAL_PATH,
 )
 from ..memory_utils import cleanup_trainer, clear_cached_data
 
@@ -50,13 +51,33 @@ from ..deepseek_dynamics_routing.config import (
     PRUNE_THRESHOLD,
     MIN_ACTIVE_EXPERTS,
     BIAS_UPDATE_INTERVAL,
-    CLEAR_CACHE_EVERY
+    CLEAR_CACHE_EVERY,
 )
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
-os.environ["ACCELERATE_GRADIENT_ACCUMULATION_STEPS"] = str(GRAD_ACCUM)
+
+
+def _build_ds_config(per_device_batch, grad_accum):
+    return {
+        "train_batch_size": per_device_batch * max(world_size, 1) * grad_accum,
+        "train_micro_batch_size_per_gpu": per_device_batch,
+        "gradient_accumulation_steps": grad_accum,
+        "bf16": {"enabled": True},
+        "zero_optimization": {
+            "stage": 2,
+            "offload_optimizer": {"device": "cpu", "pin_memory": True},
+            "overlap_comm": True,
+            "contiguous_gradients": True,
+            "reduce_bucket_size": 5e8,
+            "allgather_bucket_size": 5e8,
+        },
+        "gradient_clipping": 1.0,
+        "steps_per_print": 10,
+        "wall_clock_breakdown": False,
+        "zero_allow_untested_optimizer": True,
+    }
 
 
 # Helper: Detect DYNMoE exactly like the Jupyter notebook
@@ -70,7 +91,18 @@ def _class_uses_dynmoe(cls):
     return any(n in globals() for n in names)
 
 
-def fine_tune_model(pretrained_path, output_dir):
+def fine_tune_model(pretrained_path, output_dir, **kwargs):
+    # Resolve Fine-Tuning Hyperparameters
+    _max_seq_len             = kwargs.pop("MAX_SEQ_LEN", None)
+    per_device_batch         = kwargs.pop("PER_DEVICE_BATCH", PER_DEVICE_BATCH)
+    grad_accum               = kwargs.pop("GRAD_ACCUM", GRAD_ACCUM)
+    learning_rate            = kwargs.pop("LEARNING_RATE", LEARNING_RATE)
+    num_epochs               = kwargs.pop("NUM_EPOCHS_FT", NUM_EPOCHS_FT)
+    warmup_steps             = kwargs.pop("WARMUP_STEPS", WARMUP_STEPS)
+    weight_decay             = kwargs.pop("WEIGHT_DECAY", WEIGHT_DECAY)
+    early_stopping_patience  = kwargs.pop("EARLY_STOPPING_PATIENCE", EARLY_STOPPING_PATIENCE)
+    early_stopping_threshold = kwargs.pop("EARLY_STOPPING_THRESHOLD", EARLY_STOPPING_THRESHOLD)
+
     # Load Model and Tokenizer
     print(f"Loading pretrained model from {pretrained_path} ...")
     model, tokenizer = load_model_and_tokenizer(pretrained_path)
@@ -101,26 +133,9 @@ def fine_tune_model(pretrained_path, output_dir):
     print(f"  Trainable parameters : {trainable_params:,}")
     print(f"  Model architecture:\n{model}\n")
 
-    # DeepSpeed Configuration
+    # DeepSpeed Configuration (rebuilt with resolved values)
     os.makedirs(output_dir, exist_ok=True)
-    ds_config = {
-        "train_batch_size": PER_DEVICE_BATCH * max(world_size, 1) * GRAD_ACCUM,
-        "train_micro_batch_size_per_gpu": PER_DEVICE_BATCH,
-        "gradient_accumulation_steps": GRAD_ACCUM,
-        "bf16": {"enabled": True},
-        "zero_optimization": {
-            "stage": 2,
-            "offload_optimizer": {"device": "cpu", "pin_memory": True},
-            "overlap_comm": True,
-            "contiguous_gradients": True,
-            "reduce_bucket_size": 5e8,
-            "allgather_bucket_size": 5e8,
-        },
-        "gradient_clipping": 1.0,
-        "steps_per_print": 10,
-        "wall_clock_breakdown": False,
-        "zero_allow_untested_optimizer": True,
-    }
+    ds_config = _build_ds_config(per_device_batch, grad_accum)
     ds_config_path = os.path.join(output_dir, "ds_config_finetune.json")
     with open(ds_config_path, "w") as f:
         json.dump(ds_config, f, indent=2)
@@ -130,14 +145,14 @@ def fine_tune_model(pretrained_path, output_dir):
     resource_monitor = ResourceMonitorCallback()
     moemetrics_callback = MoEMetricsCallback(
         val_dataset, tokenizer, data_collator,
-        early_stop_patience=EARLY_STOPPING_PATIENCE,
-        early_stop_threshold=EARLY_STOPPING_THRESHOLD,
+        early_stop_patience=early_stopping_patience,
+        early_stop_threshold=early_stopping_threshold,
     )
     callbacks = [resource_monitor, moemetrics_callback]
 
     # Detect DYNMoE based on the actual class structure
     is_dynmoe = _class_uses_dynmoe(model.__class__)
-    
+
     if is_dynmoe:
         adaptive_callback = DynmoeRoutingCallback(
             audit_steps=AUDIT_STEPS,
@@ -154,13 +169,13 @@ def fine_tune_model(pretrained_path, output_dir):
     # Training Arguments
     training_args = TrainingArguments(
         output_dir=output_dir,
-        num_train_epochs=NUM_EPOCHS_FT,
-        per_device_train_batch_size=PER_DEVICE_BATCH,
-        per_device_eval_batch_size=PER_DEVICE_BATCH,
-        gradient_accumulation_steps=GRAD_ACCUM,
-        learning_rate=LEARNING_RATE,
-        weight_decay=WEIGHT_DECAY,
-        warmup_steps=WARMUP_STEPS,
+        num_train_epochs=num_epochs,
+        per_device_train_batch_size=per_device_batch,
+        per_device_eval_batch_size=per_device_batch,
+        gradient_accumulation_steps=grad_accum,
+        learning_rate=learning_rate,
+        weight_decay=weight_decay,
+        warmup_steps=warmup_steps,
         max_grad_norm=1.0,
         lr_scheduler_type="cosine",
         fp16=False,
@@ -222,11 +237,11 @@ def fine_tune_model(pretrained_path, output_dir):
     return trainer
 
 
-def run_fine_tuning(pretrained_path, output_dir):
+def run_fine_tuning(pretrained_path, output_dir, **kwargs):
     print("=" * 60)
     print(f"FINE-TUNING from {pretrained_path}")
     print("=" * 60)
 
-    trainer = fine_tune_model(pretrained_path, output_dir)
+    trainer = fine_tune_model(pretrained_path, output_dir, **kwargs)
     cleanup_trainer(trainer)
     clear_cached_data()
