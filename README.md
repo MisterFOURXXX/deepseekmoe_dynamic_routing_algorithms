@@ -13,7 +13,7 @@ We address these limitations by integrating DYNMoE's dynamic routing algorithm w
 - **Dynamic Routing Integration** – Replaced DeepSeekMoE's fixed Top‑K routing with DYNMoE's Top‑Any gating, enabling token‑level adaptive expert activation.
 - **Enhanced Auxiliary Loss** – Incorporated diversity and simplicity losses to promote expert orthogonality and stable routing.
 - **Adaptive Expert Tuning** – Implemented automatic expert pool resizing during training to match data complexity.
-- **Comprehensive Evaluation** – Evaluated on computational efficiency and model performance during training and fine tuning using the SlimPajama dataset, combined with benchmark evaluation for inference across multiple benchmarks MiniPile, ARC-Challenge, RACE, TriviaQA, and AmbigQA
+- **Comprehensive Evaluation** – Evaluated on computational efficiency and model performance during training and fine tuning using the SlimPajama dataset, combined with benchmark evaluation for inference across multiple benchmarks MiniPile, ARC-Challenge, and TriviaQA
 
 ---
 
@@ -76,10 +76,11 @@ git clone https://github.com/yourusername/deepseekmoe_dynamic_routing_algorithms
 
 **Step 2: Change Download and Packages Configure Paths**
 
-In `setup.sh` at `REPO_ROOT` variable, it has to change the path to your project location.
+In `setup.sh` at `REPO_ROOT` variable, it has to change the path to your project location, and update the paths and your HuggingFace Token for downloading the SlimPajama and benchmark datasets
 
 ```bash
 REPO_ROOT="./deepseekmoe_dynamic_routing_algorithms"   # Ex. cd /content/working/deepseekmoe_dynamic_routing_algorithms
+HF_TOKEN="hf_..."                                       # Replace with your HUggingFace access token (READ token)
 ```
 
 **Step 3: Setup System Environment and Install Python Packages**
@@ -101,7 +102,7 @@ chmod +x setup.sh
 bash setup.sh
 ```
 
-If there is any package import errors when running notebook experiments, please try:
+If there is any package import errors or environments errors when running notebook experiments, please try:
 
 ```bash
 cd ./deepseekmoe_dynamic_routing_algorithms            # Ex. cd /content/working/deepseekmoe_dynamic_routing_algorithms
@@ -109,7 +110,7 @@ python -m pip install --upgrade pip setuptools wheel
 # Uninstall previous version to prevent import errors and prevent conflicts
 python -m pip uninstall -y transformers huggingface-hub tokenizers torch torchvision torchaudio 
 # PyTorch with CUDA
-python -m pip install torch==2.11.0 torchvision==0.26.0 torchaudio==2.11.0   # Also version 13.0 is compatible : python -m pip install torch==2.13.0 torchvision==0.28.0
+python -m pip install torch==2.13.0 torchvision==0.28.0       # PyTorch Version 2.11.0 also compatible : pip install torch==2.11.0 torchvision==0.26.0 torchaudio==2.11.0
 # Python packages
 python -m pip install -r requirements.txt
 ```
@@ -118,32 +119,10 @@ python -m pip install -r requirements.txt
 
 **Step 4: Execute Data Preprocessing**
 
-**Step 4.1: Configure Paths**
-
-Update the paths and your HuggingFace Token for downloading the SlimPajama and benchmark datasets, data preprocessing, and to save the datasets in `./source/data_preprocessing/config.py`:
-```python
-HF_TOKEN     = "hf_..."                                             # Replace with your HuggingFace Token
-DATASET_ROOT = "./deepseekmoe_dynamic_routing_algorithms/dataset"   # "/content/deepseekmoe_dynamic_routing_algorithms/dataset"
-REPO_ROOT = = "./deepseekmoe_dynamic_routing_algorithms"            # "/content/deepseekmoe_dynamic_routing_algorithms"
-```
-
-**Step 4.2: Run Preprocessing**
-
 ```bash
 cd ./deepseekmoe_dynamic_routing_algorithms/source/data_preprocessing          # Ex. cd /content/deepseekmoe_dynamic_routing_algorithms/data_preprocessing
 python3 preprocessing.py
 ```
-
-**Step 5: Configure Model Training, Fine Tuning, and Evaluation Paths**
-
-Update the output paths in `source/training_utils/config.py`:
-
-```python
-OUTPUT_BASELINE = "./deepseekmoe_dynamic_routing_algorithms/checkpoints/baseline"                   # Ex. "/content/deepseekmoe_dynamic_routing_algorithms/checkpoints/baseline"
-OUTPUT_DEEPSEEK_DYNMOE = "./deepseekmoe_dynamic_routing_algorithms/checkpoints/dynmoe_routing"      # Ex. "/content/deepseekmoe_dynamic_routing_algorithms/checkpoints/dynmoe_routing"
-```
-
-The repository will automatically config all training, fine-tuning, and evaluation paths for all models.
 
 ---
 
@@ -157,16 +136,16 @@ All experiments are organized as Jupyter notebooks in the `./deepseekmoe_dynamic
 
 Trains both models **from scratch** on the SlimPajama dataset, which is split into training, fine-tuning, and validation sets. All text sequences are tokenized using the DeepSeekMoE tokenizer (BPE) and truncated to a maximum sequence length. Both models are validated at the end of each epoch.
 
-- **DeepSeekMoE Baseline**: DeepSeekMoE with fixed Top‑K (K=2)
-- **Prototype**: Our integrated DeepSeekMoE with DYNMoE routing. It matches standard transformer hyperparameters with 2 shared experts and an initial pool of 8 routed experts per layer. Routing thresholds are initialized to -1.35, dynamically activating between 1 and 6 routed experts with periodic adaptive tuning and an inference fallback safeguard.
+- **DeepSeekMoE Baseline**: DeepSeekMoE with fixed Top‑K (K=2).
+- **Prototype**: Our integrated DeepSeekMoE with DYNMoE routing. It matches standard transformer hyperparameters with 2 shared experts and an initial pool of 8 routed experts per layer. Routing thresholds are initialized to -5.85, dynamically activating between 1 and 6 routed experts with periodic adaptive tuning and an inference fallback safeguard. Our initial configurations of the model architecture ware optimized for SlimPajama dataset.
 
-**Outputs:** Checkpoints saved in `checkpoints/baseline/` and `checkpoints/dynmoe_routing/`.
+**Configuration & Outputs:** The notebook features a centralized configuration cell for training parameters (Learning Rate, Batch Size, etc.) and DeepSpeed settings. Model-specific configs (e.g., `n_shared_experts`, `aux_loss_alpha`, `audit_steps`) are passed directly into the runner function. Checkpoints are saved in `checkpoints/baseline/` and `checkpoints/dynmoe_routing/`.
 
 **02_fine_tuning_comparison.ipynb – Fine‑tuning**
 
 Loads the pre‑trained checkpoints and fine‑tunes them on the same dataset with a lower learning rate and smaller batch size. Both models are validated at the end of each epoch during fine-tuning.
 
-**Outputs:** Fine‑tuned models saved in `checkpoints/baseline-ft/` and `checkpoints/dynmoe_routing-ft/`.
+**Configuration & Outputs:** Similar to pre-training, a centralized configuration cell dictates the fine-tuning hyperparameters (e.g., `MAX_SEQ_LEN=384`, `LEARNING_RATE=8e-5`) and DeepSpeed config. Fine‑tuned models are saved in `checkpoints/baseline-ft/` and `checkpoints/dynmoe_routing-ft/`.
 
 **03_evaluation_comparison.ipynb – Evaluation**
 
@@ -179,9 +158,11 @@ Evaluates both fine‑tuned models on the test sets, comprehensively measuring t
    - **Reasoning and Reading Comprehension:** Accuracy on ARC-Challenge and RACE benchmarks (comparing baseline and prototype outputs to the dataset answers).
    - **Closed-book Question Answering:** Exact Match (EM) rate on TriviaQA and AmbigQA.
 
+**Configuration:** Evaluation parameters (e.g., `eval_batch_size`, `max_seq_len`, `gen_max_new_tokens`) are defined in a centralized configuration cell at the top of the notebook and passed directly to the evaluation runner.
+
 **Customising Hyperparameters**
 
-All configurable parameters are centralised in the `config.py` files under each model architecture and utility folder (e.g., `source/training_utils/config.py` and `source/deepseek_dynamics_routing/config.py`).
+While default values are still stored in the `config.py` files under each model architecture and utility folder, the Jupyter Notebooks are now designed for seamless experimentation. You can override training hyperparameters, model configurations, and DeepSpeed settings directly within the notebook cells without editing the source code. 
 
 **Memory Management**
 
@@ -191,7 +172,8 @@ However, to ensure fair results of each model comparison and avoid errors, resta
 
 **Important Note** 
 
-You must restart the kernel before running each model (DeepSeekMoE Baseline and Prototype) in each notebook to:
+You must restart the kernel before running each model (DeepSeekMoE Baseline and Prototype) in each notebook, and you **must run the configuration cell** at the top of the notebook before executing any training, fine-tuning, or evaluation command to:
+- Load the centralized hyperparameters and `ds_config`.
 - Clear GPU memory
 - Remove cached tensors
 - Avoid out-of-memory (OOM) errors
