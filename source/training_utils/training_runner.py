@@ -189,16 +189,14 @@ def train_model(
     bias_update_interval = kwargs.pop("BIAS_UPDATE_INTERVAL", BIAS_UPDATE_INTERVAL)
     clear_cache_every   = kwargs.pop("CLEAR_CACHE_EVERY", CLEAR_CACHE_EVERY)
 
+    # Remaining kwargs are model-config overrides
+    if "MIN_ROUTED_EXPERTS" in kwargs:
+        kwargs["min_routed_experts"] = kwargs.pop("MIN_ROUTED_EXPERTS")
+
     # Resolve DeepSpeed Config
     ds_config = kwargs.pop("ds_config", None)
     if ds_config is None:
         ds_config = _build_ds_config(per_device_batch, grad_accum)
-    # Note: TrainingArguments natively accepts either a dict or a str path for deepspeed.
-
-    # Remaining kwargs are model-config overrides
-    # Map uppercase MIN_ROUTED_EXPERTS to lowercase expected by DynmoeConfig
-    if "MIN_ROUTED_EXPERTS" in kwargs:
-        kwargs["min_routed_experts"] = kwargs.pop("MIN_ROUTED_EXPERTS")
     
     model_config_kwargs = kwargs
 
