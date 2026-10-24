@@ -1,10 +1,7 @@
-import sys
-sys.path.append("..")
-
 import numpy as np
 import pandas as pd
 
-def print_finetuning_summary(trainer, resource_monitor, moemetrics_callback, train_result, eval_results, perplexity):
+def print_finetuning_summary(trainer, resource_monitor, moemetrics_callback, train_result):
     avg_gpu_memory    = np.mean([m['gpu_mem_gb'] for m in resource_monitor.resource_metrics]) if resource_monitor.resource_metrics else 0.0
     avg_system_memory = np.mean([m['sys_mem_gb'] for m in resource_monitor.resource_metrics]) if resource_monitor.resource_metrics else 0.0
     avg_gpu_usage     = np.mean([m['gpu_util']   for m in resource_monitor.resource_metrics]) if resource_monitor.resource_metrics else 0.0
@@ -33,15 +30,11 @@ def print_finetuning_summary(trainer, resource_monitor, moemetrics_callback, tra
                 final_train_loss = entry['loss']
                 break
 
-    final_val_loss   = eval_results.get('eval_loss', float('inf'))
-    final_perplexity = perplexity
-
     results_table = {
         'Metric': [
-            'Average TPS', 'Final Training Loss', 'Final Validation Loss',
+            'Average TPS', 'Final Training Loss',
             'Average CPU Usage (%)', 'Average GPU Usage (%)',
             'Average System Memory (GB)', 'Average GPU Memory (GB)',
-            'Average FLOPs (GFLOPS)', 'Final Validation Perplexity',
             'Average MaxVIO_global', 'Lowest MaxVIO_global', 'Highest MaxVIO_global',
             'Average MaxVIO_batch', 'Lowest MaxVIO_batch', 'Highest MaxVIO_batch',
             'Average Active Parameters',
@@ -49,14 +42,10 @@ def print_finetuning_summary(trainer, resource_monitor, moemetrics_callback, tra
         'Value': [
             f"{avg_tps:.0f}",
             f"{final_train_loss:.4f}" if final_train_loss is not None else 'N/A',
-            f"{final_val_loss:.4f}",
             f"{avg_cpu_usage:.1f}",
             f"{avg_gpu_usage:.1f}",
             f"{avg_system_memory:.2f}",
             f"{avg_gpu_memory:.2f}",
-            f"{np.mean([m['gflops'] for m in moemetrics_callback.metrics_history]):.2f}"
-                if moemetrics_callback.metrics_history else "0.00",
-            f"{final_perplexity:.2f}",
             f"{avg_max_vio:.4f}",
             f"{min_max_vio:.4f}",
             f"{max_max_vio:.4f}",

@@ -1,6 +1,3 @@
-# ============================================================
-# source/training_utils/training_runner.py
-# ============================================================
 import os
 import gc
 import math
@@ -261,10 +258,8 @@ def train_model(
         logging_steps=1,
         logging_first_step=True,
         save_strategy="epoch",
-        eval_strategy="epoch",
+        eval_strategy="no",
         load_best_model_at_end=False,
-        metric_for_best_model="eval_loss",
-        greater_is_better=False,
         report_to="none",
         deepspeed=ds_config, 
         ddp_find_unused_parameters=False if world_size > 1 else None,
@@ -280,7 +275,9 @@ def train_model(
     # Callbacks
     resource_monitor = ResourceMonitorCallback()
     moemetrics = MoEMetricsCallback(
-        tokenized_datasets["validation"], tokenizer, data_collator,
+        eval_dataset=tokenized_datasets["validation"],
+        tokenizer=tokenizer,
+        data_collator=data_collator,
         early_stop_patience=early_stopping_patience,
         early_stop_threshold=early_stopping_threshold,
     )
@@ -312,16 +309,10 @@ def train_model(
 
     print("Starting training...")
     train_result = trainer.train()
-    eval_results = trainer.evaluate()
-
-    final_loss = eval_results.get("eval_loss", float("inf"))
-    perplexity = math.exp(final_loss) if 0 < final_loss < 30 else float("inf")
-    print(f"Final validation loss: {final_loss:.4f}")
-    print(f"Validation Perplexity: {perplexity:.2f}")
 
     save_model_and_tokenizer(trainer, output_dir)
     print_training_summary(
-        resource_monitor, moemetrics, train_result, eval_results, perplexity,
+        resource_monitor, moemetrics, train_result,
     )
 
     return trainer

@@ -1,4 +1,3 @@
-# source/fine_tuning_utils/fine_tuning_runner.py
 import sys
 sys.path.append("..")
 
@@ -116,6 +115,7 @@ def fine_tune_model(pretrained_path, output_dir, **kwargs):
     # Load Pre-tokenized Datasets from Disk 
     print(f"Loading train dataset from {DEFAULT_FINE_PATH} ...")
     finetune_dataset = load_from_disk(DEFAULT_FINE_PATH)
+    
     print(f"Loading val dataset from {DEFAULT_VAL_PATH} ...")
     val_dataset = load_from_disk(DEFAULT_VAL_PATH)
 
@@ -152,7 +152,9 @@ def fine_tune_model(pretrained_path, output_dir, **kwargs):
     # Callbacks 
     resource_monitor = ResourceMonitorCallback()
     moemetrics_callback = MoEMetricsCallback(
-        val_dataset, tokenizer, data_collator,
+        eval_dataset=val_dataset,
+        tokenizer=tokenizer,
+        data_collator=data_collator,
         early_stop_patience=early_stopping_patience,
         early_stop_threshold=early_stopping_threshold,
     )
@@ -193,10 +195,8 @@ def fine_tune_model(pretrained_path, output_dir, **kwargs):
         half_precision_backend="auto",
         logging_steps=10,
         save_strategy="epoch",
-        eval_strategy="epoch",
+        eval_strategy="no",
         load_best_model_at_end=False,
-        metric_for_best_model="eval_loss",
-        greater_is_better=False,
         report_to="none",
         deepspeed=ds_config_path, 
         ddp_find_unused_parameters=False if world_size > 1 else None,
@@ -232,15 +232,9 @@ def fine_tune_model(pretrained_path, output_dir, **kwargs):
     train_result = trainer.train()
     print("\nFine-tuning finished.")
 
-    eval_results = trainer.evaluate()
-    final_loss = eval_results.get("eval_loss", float('inf'))
-    perplexity = math.exp(final_loss) if 0 < final_loss < 30 else float('inf')
-    print(f"Final validation loss : {final_loss:.4f}")
-    print(f"Validation Perplexity : {perplexity:.2f}")
-
     # Save & Summarize 
     save_finetuned_model(trainer, output_dir)
-    print_finetuning_summary(trainer, resource_monitor, moemetrics_callback, train_result, eval_results, perplexity)
+    print_finetuning_summary(trainer, resource_monitor, moemetrics_callback, train_result)
 
     return trainer
 

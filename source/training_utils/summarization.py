@@ -2,8 +2,7 @@ import numpy as np
 import pandas as pd
 
 
-def print_training_summary(resource_monitor, moemetrics_callback,
-                           train_result, eval_results, perplexity):
+def print_training_summary(resource_monitor, moemetrics_callback, train_result):
     rm = resource_monitor.resource_metrics or []
     avg_gpu_memory    = np.mean([m['gpu_mem_gb'] for m in rm]) if rm else 0.0
     avg_system_memory = np.mean([m['sys_mem_gb'] for m in rm]) if rm else 0.0
@@ -24,21 +23,16 @@ def print_training_summary(resource_monitor, moemetrics_callback,
     moe_hist = moemetrics_callback.metrics_history or []
     active_params_values = [m.get('active_params', 0) for m in moe_hist]
     avg_active_params = np.mean(active_params_values) if active_params_values else 0.0
-    avg_gflops = np.mean([m.get('gflops', 0) for m in moe_hist]) if moe_hist else 0.0
 
     final_train_loss = getattr(train_result, "training_loss", None)
     if final_train_loss is None and moe_hist:
         final_train_loss = moe_hist[-1].get('train_loss', None)
 
-    final_val_loss   = eval_results.get('eval_loss', float('inf'))
-    final_perplexity = perplexity
-
     results_table = {
         'Metric': [
-            'Average TPS', 'Final Training Loss', 'Final Validation Loss',
+            'Average TPS', 'Final Training Loss',
             'Average CPU Usage (%)', 'Average GPU Usage (%)',
             'Average System Memory (GB)', 'Average GPU Memory (GB)',
-            'Average FLOPs (GFLOPS)', 'Final Validation Perplexity',
             'Average MaxVIO_global', 'Lowest MaxVIO_global', 'Highest MaxVIO_global',
             'Average MaxVIO_batch', 'Lowest MaxVIO_batch', 'Highest MaxVIO_batch',
             'Average Active Parameters',
@@ -46,13 +40,10 @@ def print_training_summary(resource_monitor, moemetrics_callback,
         'Value': [
             f"{avg_tps:.0f}",
             f"{final_train_loss:.4f}" if final_train_loss is not None else 'N/A',
-            f"{final_val_loss:.4f}",
             f"{avg_cpu_usage:.1f}",
             f"{avg_gpu_usage:.1f}",
             f"{avg_system_memory:.2f}",
             f"{avg_gpu_memory:.2f}",
-            f"{avg_gflops:.2f}",
-            f"{final_perplexity:.2f}",
             f"{avg_max_vio:.4f}",
             f"{min_max_vio:.4f}",
             f"{max_max_vio:.4f}",

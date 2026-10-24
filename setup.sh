@@ -8,8 +8,8 @@ cd "$SCRIPT_DIR"
 # ------------------------------------------------------------
 # >>>>>>>>>> EDIT ONLY THESE TWO LINES <<<<<<<<<<<<<<<<<<<<<<<
 # ------------------------------------------------------------
-REPO_ROOT="./deepseekmoe_dynamic_routing_algorithms"   # e.g. "/content/deepseekmoe_dynamic_routing_algorithms"
-HF_TOKEN="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"
+REPO_ROOT="./deepseekmoe_dynamic_routing_algorithms"   # Please change to your path to this repo, e.g. "/content/deepseekmoe_dynamic_routing_algorithms"
+HF_TOKEN="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"       # Revise this to your Hugging Face token, e.g. "hf_XXXX"
 # ------------------------------------------------------------
 
 cd "$REPO_ROOT"

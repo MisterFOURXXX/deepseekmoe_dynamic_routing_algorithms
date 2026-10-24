@@ -1,14 +1,12 @@
 import sys
 sys.path.append("..")
 
-import os
 import time
 import subprocess
-import math
 import numpy as np
-import torch.nn as nn
 import psutil
 import torch
+import torch.nn as nn
 from torch.utils.data import DataLoader
 from transformers import TrainerCallback
 from torch.utils.flop_counter import FlopCounterMode
@@ -96,6 +94,7 @@ class ResourceMonitorCallback(TrainerCallback):
         print(f" CPU Usage : {cpu_pct:.1f} %")
         print(f" Tokens/s : {tokens_per_sec:.0f}")
 
+
 class MoEMetricsCallback(TrainerCallback):
     def __init__(self, eval_dataset, tokenizer, data_collator,
                  early_stop_patience=3, early_stop_threshold=0.001):
@@ -123,7 +122,6 @@ class MoEMetricsCallback(TrainerCallback):
         self.is_dynmoe = None
         self._epoch_metrics_printed = False
 
-    # TrainerCallback
     def on_log(self, args, state, control, logs=None, **kwargs):
         if logs is not None and 'loss' in logs:
             self.last_train_loss = logs['loss']
@@ -148,7 +146,7 @@ class MoEMetricsCallback(TrainerCallback):
             step_vios = []
             for layer_idx, counts in self.step_layer_counts.items():
                 total = counts.sum()
-                n_experts = len(counts)          # counts is now always 1D
+                n_experts = len(counts)
                 expected = total / n_experts if total > 0 else 0.0
                 if expected > 0:
                     vio = np.max(np.abs(counts - expected)) / (expected + 1e-12)
@@ -156,7 +154,6 @@ class MoEMetricsCallback(TrainerCallback):
                     vio = 0.0
                 step_vios.append(vio)
 
-                # Update biases for DYNMoE if the gate supports it
                 if layer_idx < len(self.gates) and hasattr(self.gates[layer_idx], 'update_biases'):
                     self.gates[layer_idx].update_biases(torch.from_numpy(counts).to(model.device))
 
@@ -191,7 +188,6 @@ class MoEMetricsCallback(TrainerCallback):
             model.train()
             return
 
-        # Prepare validation hooks
         if self.is_dynmoe:
             layer_expert_counts = []
             val_hooks = []
@@ -201,14 +197,12 @@ class MoEMetricsCallback(TrainerCallback):
                 layer_expert_counts.append(arr)
                 def val_hook_fn(module, input, output):
                     nonlocal arr
-                    # Weight extraction
                     if len(output) >= 2 and isinstance(output[1], torch.Tensor):
                         weights = output[1]
                     elif len(output) >= 1 and isinstance(output[0], torch.Tensor):
                         weights = output[0]
                     else:
                         return
-                    # Sum over all dimensions EXCEPT the last (expert dimension)
                     reduce_dims = tuple(range(weights.dim() - 1))
                     activated = (weights > 1e-8).float()
                     counts = activated.sum(dim=reduce_dims).detach().cpu().numpy()
@@ -233,7 +227,6 @@ class MoEMetricsCallback(TrainerCallback):
                 hook = layer.mlp.gate.register_forward_hook(val_hook_fn)
                 val_hooks.append(hook)
 
-        # Evaluation loop with FLOP counting
         from torch.utils.flop_counter import FlopCounterMode
         flop_counter = FlopCounterMode(unwrapped, display=False)
 
@@ -263,11 +256,9 @@ class MoEMetricsCallback(TrainerCallback):
             h.remove()
 
         eval_loss = total_loss / total_valid_tokens if total_valid_tokens > 0 else float('inf')
-        perplexity = math.exp(eval_loss) if eval_loss < 20 else float('inf')
         measured_flops = flop_counter.get_total_flops()
         gflops = measured_flops / 1e9
 
-        # Compute metrics
         if self.is_dynmoe:
             total_activations = sum(cnt.sum() for cnt in layer_expert_counts)
             avg_activated = total_activations / (total_valid_tokens * num_moe_layers + 1e-12)
@@ -306,7 +297,6 @@ class MoEMetricsCallback(TrainerCallback):
             'epoch': state.epoch,
             'train_loss': self.last_train_loss,
             'eval_loss': eval_loss,
-            'perplexity': perplexity,
             'gflops': gflops,
             'max_vio_global': max_vio_global,
             'max_vio_batch': max_vio_batch,
@@ -324,13 +314,11 @@ class MoEMetricsCallback(TrainerCallback):
         print(f"\nEpoch {state.epoch:.2f} Metrics:")
         print(f" Loss          : {self.last_train_loss:8.4f}")
         print(f" Val_Loss      : {eval_loss:8.4f}")
-        print(f" Perplexity    : {perplexity:8.2f}")
         print(f" GFLOPs        : {gflops:8.2f}")
         print(f" MaxVIO_global : {max_vio_global:8.6f}")
         print(f" MaxVIO_batch  : {max_vio_batch:8.6f}")
         print(f" Active Params : {active_params:,.0f} {avg_routed_str}")
 
-        # Early stopping
         if eval_loss < self.best_eval_loss - self.early_stop_threshold:
             self.best_eval_loss = eval_loss
             self.patience_counter = 0
@@ -342,7 +330,6 @@ class MoEMetricsCallback(TrainerCallback):
 
         model.train()
 
-    # Helper methods
     def _get_layer_list(self, model):
         if hasattr(model, 'model') and hasattr(model.model, 'layers'):
             return model.model.layers
@@ -381,7 +368,6 @@ class MoEMetricsCallback(TrainerCallback):
             print("[MoEMetricsCallback] No MoE layers found. No hooks attached.")
             return
 
-        # Detect DYNMoE by presence of DYNMoE‑specific attributes
         is_dynmoe = False
         for layer in moe_layers:
             gate = layer.mlp.gate
@@ -418,11 +404,6 @@ class MoEMetricsCallback(TrainerCallback):
             self.batch_counts += counts
 
     def _batch_hook_dynmoe(self, module, input, output, layer_idx):
-        """
-        Training hook for DYNMoE – CORRECTED: sum over all non‑expert dimensions.
-        Works for any rank (2D, 3D, etc.).
-        """
-        # Weight extraction: check second element first
         if len(output) >= 2 and isinstance(output[1], torch.Tensor):
             weights = output[1]
         elif len(output) >= 1 and isinstance(output[0], torch.Tensor):
@@ -430,7 +411,6 @@ class MoEMetricsCallback(TrainerCallback):
         else:
             return
 
-        # Sum over all dimensions except the last
         reduce_dims = tuple(range(weights.dim() - 1))
         counts = (weights > 1e-8).float().sum(dim=reduce_dims).detach().cpu().numpy()
 
