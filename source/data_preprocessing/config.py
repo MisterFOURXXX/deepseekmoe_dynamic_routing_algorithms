@@ -1,11 +1,11 @@
 import os
 
-HF_TOKEN             = "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" 
+HF_TOKEN             = "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"
 TOKENIZER_NAME       = "deepseek-ai/deepseek-moe-16b-base"
 
 MAX_SEQ_LEN          = 384
-SAMPLE_RATIO         = 0.0001
-BENCH_SAMPLE_RATIO   = 0.005
+SAMPLE_RATIO         = 0.0003
+BENCH_SAMPLE_RATIO   = 0.05
 
 DATASET_ROOT = "/content/deepseekmoe_dynamic_routing_algorithms/dataset"
 REPO_ROOT = "/content/deepseekmoe_dynamic_routing_algorithms"

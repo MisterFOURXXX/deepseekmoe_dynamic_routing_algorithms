@@ -172,7 +172,7 @@ def build_slimpajama():
         sp = sp.remove_columns(drop)
 
     train_n = max(1, int(len(sp["train"])      * SAMPLE_RATIO))
-    val_n   = max(1, int(len(sp["validation"]) * 0.05))
+    val_n   = max(1, int(len(sp["validation"]) * 0.1))
 
     train_sub = sp["train"].shuffle(seed=42).select(range(train_n))
     val_sub   = sp["validation"].shuffle(seed=42).select(range(val_n))
