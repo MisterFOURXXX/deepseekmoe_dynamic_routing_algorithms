@@ -16,8 +16,6 @@ DEFAULT_FINE_PATH      = os.path.join(DATASET_ROOT, "slimpajama_finetune")
 DEFAULT_VAL_PATH       = os.path.join(DATASET_ROOT, "slimpajama_val")
 
 DEFAULT_MINIPILE_PATH  = os.path.join(DATASET_ROOT, "minipile")
-DEFAULT_ARC_PATH       = os.path.join(DATASET_ROOT, "arc")
-DEFAULT_TRIVIAQA_PATH  = os.path.join(DATASET_ROOT, "triviaqa")
 
 PATHS = {
     "tokenizer":           DEFAULT_TOKENIZER_PATH,
@@ -25,6 +23,4 @@ PATHS = {
     "slimpajama_finetune": DEFAULT_FINE_PATH,
     "slimpajama_val":      DEFAULT_VAL_PATH,
     "minipile":            DEFAULT_MINIPILE_PATH,
-    "arc":                 DEFAULT_ARC_PATH,
-    "triviaqa":            DEFAULT_TRIVIAQA_PATH,
 }

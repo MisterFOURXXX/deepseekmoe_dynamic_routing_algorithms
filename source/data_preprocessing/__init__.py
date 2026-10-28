@@ -12,8 +12,6 @@ from .config import (
     DEFAULT_FINE_PATH,
     DEFAULT_VAL_PATH,
     DEFAULT_MINIPILE_PATH,
-    DEFAULT_ARC_PATH,
-    DEFAULT_TRIVIAQA_PATH,
     PATHS as DATASET_PATHS,
 )
 
@@ -29,8 +27,6 @@ __all__ = [
     "DEFAULT_FINE_PATH",
     "DEFAULT_VAL_PATH",
     "DEFAULT_MINIPILE_PATH",
-    "DEFAULT_ARC_PATH",
-    "DEFAULT_TRIVIAQA_PATH",
     "DATASET_PATHS",
     "preprocessing",
 ]

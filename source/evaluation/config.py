@@ -7,7 +7,7 @@ from ..data_preprocessing import DATASET_ROOT
 
 MAX_SEQ_LEN = 256
 
-# EVAL_PARAMS - identical to the DeepSeekMoE evaluation code
+# EVAL_PARAMS - Retained as requested
 EVAL_PARAMS = {
     "max_seq_len":        256,
     "eval_batch_size":    8,

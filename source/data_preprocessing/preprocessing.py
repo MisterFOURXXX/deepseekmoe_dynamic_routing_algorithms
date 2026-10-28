@@ -142,16 +142,6 @@ LM_FEATURES = Features({
     "input_ids":      Sequence(Value("int32")),
     "attention_mask": Sequence(Value("int32")),
 })
-MC_FEATURES = Features({
-    "prompt":        Value("string"),
-    "choices":       Sequence(Value("string")),
-    "choice_labels": Sequence(Value("string")),
-    "label":         Value("string"),
-})
-QA_FEATURES = Features({
-    "prompt":  Value("string"),
-    "answers": Sequence(Value("string")),
-})
 
 
 # SlimPajama splits
@@ -218,68 +208,9 @@ def build_minipile():
     print(f"MiniPile ({len(ds)}) saved to {PATHS['minipile']}")
 
 
-# ARC
-def build_arc():
-    if _dataset_saved(PATHS["arc"]):
-        print("ARC already exists - skipping.")
-        return
-    print("Loading ARC-Challenge ...")
-    arc = safe_sample(
-        _safe_load_dataset(
-            "allenai/ai2_arc", "ARC-Challenge", split="test",
-            download_mode="force_redownload",
-        ),
-        BENCH_SAMPLE_RATIO,
-    )
-
-    def fmt(ex):
-        labels = list(ex["choices"]["label"])
-        texts  = list(ex["choices"]["text"])
-        prompt = f"Question: {ex['question']}\nChoices:\n"
-        for lab, txt in zip(labels, texts):
-            prompt += f"{lab}. {txt}\n"
-        return {"prompt": prompt + "Answer:",
-                "choices": texts,
-                "choice_labels": labels,
-                "label": ex["answerKey"]}
-
-    ds = arc.map(fmt, remove_columns=arc.column_names,
-                 features=MC_FEATURES, num_proc=1)
-    ds.save_to_disk(PATHS["arc"])
-    print(f"ARC ({len(ds)}) saved to {PATHS['arc']}")
-
-
-# TriviaQA
-def build_triviaqa():
-    if _dataset_saved(PATHS["triviaqa"]):
-        print("TriviaQA already exists - skipping.")
-        return
-    print("Loading TriviaQA (mandarjoshi/trivia_qa, rc.nocontext, validation) ...")
-    tr = safe_sample(
-        _safe_load_dataset(
-            "mandarjoshi/trivia_qa", "rc.nocontext", split="validation",
-            download_mode="force_redownload",
-        ),
-        BENCH_SAMPLE_RATIO,
-    )
-
-    def fmt(ex):
-        raw = list(ex["answer"].get("aliases", [])) + [ex["answer"].get("value", "")]
-        answers = list({a.strip() for a in raw if a and a.strip()}) or [""]
-        return {"prompt": f"Question: {ex['question']}\nAnswer:",
-                "answers": answers}
-
-    ds = tr.map(fmt, remove_columns=tr.column_names,
-                features=QA_FEATURES, num_proc=1)
-    ds.save_to_disk(PATHS["triviaqa"])
-    print(f"TriviaQA ({len(ds)}) saved to {PATHS['triviaqa']}")
-
-
 if __name__ == "__main__":
     build_slimpajama()
     build_minipile()
-    build_arc()
-    build_triviaqa()
 
     print("\n" + "=" * 60)
     print("All tokenized datasets saved under:", DATASET_ROOT)

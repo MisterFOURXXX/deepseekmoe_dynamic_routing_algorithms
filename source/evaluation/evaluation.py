@@ -8,11 +8,8 @@ warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", message=".*seen_tokens.*")
 
 import math
-import re
-import string
 import subprocess
 import time
-from collections import Counter
 
 import numpy as np
 import pandas as pd
@@ -21,38 +18,6 @@ import torch
 from torch.utils.data import DataLoader
 from torch.utils.flop_counter import FlopCounterMode
 from transformers import DataCollatorForLanguageModeling
-
-# Answer Normalisation Helpers (EM / F1)
-def normalize_answer(s):
-    def remove_articles(text):
-        return re.sub(r"\b(a|an|the)\b", " ", text)
-    def white_space_fix(text):
-        return " ".join(text.split())
-    def remove_punc(text):
-        return "".join(ch for ch in text if ch not in string.punctuation)
-    return white_space_fix(remove_articles(remove_punc(s.lower())))
-
-
-def compute_exact_match(pred, golds):
-    pred = normalize_answer(pred)
-    return max(int(pred == normalize_answer(g)) for g in golds)
-
-
-def compute_f1(pred, golds):
-    pred_toks = normalize_answer(pred).split()
-    best = 0.0
-    for g in golds:
-        gold_toks = normalize_answer(g).split()
-        if not pred_toks or not gold_toks:
-            continue
-        common   = Counter(pred_toks) & Counter(gold_toks)
-        num_same = sum(common.values())
-        if num_same == 0:
-            continue
-        prec = num_same / len(pred_toks)
-        rec  = num_same / len(gold_toks)
-        best = max(best, 2 * prec * rec / (prec + rec))
-    return best
 
 
 # Resource Snapshot Helper
@@ -81,11 +46,10 @@ def take_resource_snapshot(resources):
 def evaluate_model(model, tokenizer, dataset_name, dataset, device, **kwargs):
     max_seq_len        = kwargs.get("max_seq_len", 512)
     eval_batch_size    = kwargs.get("eval_batch_size", 8)
-    gen_max_new_tokens = kwargs.get("gen_max_new_tokens", 32)
-    gen_min_new_tokens = kwargs.get("gen_min_new_tokens", 1)
-    repetition_penalty = kwargs.get("repetition_penalty", 1.1)
-    num_beams          = kwargs.get("num_beams", 1)
-    do_sample          = kwargs.get("do_sample", False)
+    
+    # Note: gen_max_new_tokens, gen_min_new_tokens, repetition_penalty, 
+    # num_beams, do_sample are safely ignored here since they were only
+    # used for generative QA (TriviaQA/AmbigQA).
 
     model.eval()
     unwrapped = model.module if hasattr(model, "module") else model
@@ -170,9 +134,6 @@ def evaluate_model(model, tokenizer, dataset_name, dataset, device, **kwargs):
 
     task_metrics = {
         "Perplexity":  "N/A",
-        "Accuracy":    "N/A",
-        "Exact Match": "N/A",
-        "F1":          "N/A",
     }
 
     total_tokens   = 0
@@ -222,114 +183,6 @@ def evaluate_model(model, tokenizer, dataset_name, dataset, device, **kwargs):
         perplexity = (math.exp(total_loss / total_tokens)
                       if total_tokens > 0 else float("inf"))
         task_metrics["Perplexity"] = f"{perplexity:.2f}"
-        measured_flops = flop_counter.get_total_flops()
-
-    # Multiple-Choice Accuracy (ARC)
-    elif dataset_name == "arc":
-        correct = 0
-        total   = 0
-        flop_counter = FlopCounterMode(display=False)
-        with flop_counter:
-            with torch.no_grad():
-                for ex in dataset:
-                    hook_obj.reset_batch()
-                    prompt        = ex["prompt"]
-                    choices       = ex["choices"]
-                    choice_labels = ex["choice_labels"]
-                    label         = ex["label"]
-
-                    losses = []
-                    for c in choices:
-                        full = prompt + " " + c
-                        inputs = tokenizer(
-                            full, return_tensors="pt",
-                            truncation=True, max_length=max_seq_len,
-                        ).to(device)
-                        prompt_len = len(tokenizer(prompt, add_special_tokens=False)["input_ids"])
-                        labels_t = inputs["input_ids"].clone()
-                        labels_t[:, :prompt_len] = -100
-                        out = model(**inputs, labels=labels_t)
-                        losses.append(out.loss.float().item())
-                        total_tokens += (labels_t != -100).sum().item()
-
-                    best_idx = int(np.argmin(losses))
-                    if choice_labels[best_idx] == label:
-                        correct += 1
-                    total += 1
-
-                    if hook_obj.batch_counts is not None:
-                        tot = hook_obj.batch_counts.sum()
-                        if tot > 0:
-                            exp = tot / len(hook_obj.batch_counts)
-                            hook_obj.batch_vios.append(
-                                np.max(np.abs(hook_obj.batch_counts - exp)) / tot
-                            )
-                    take_resource_snapshot(resources)
-        acc = correct / total if total else 0.0
-        task_metrics["Accuracy"] = f"{acc:.4f}"
-        measured_flops = flop_counter.get_total_flops()
-
-    # Generative QA EM / F1 (TriviaQA / NQ)
-    elif dataset_name in ("triviaqa", "nq"):
-        em_scores, f1_scores = [], []
-        flop_counter = FlopCounterMode(display=False)
-        with flop_counter:
-            with torch.no_grad():
-                for i in range(0, len(dataset), eval_batch_size):
-                    batch_ex = dataset[i : i + eval_batch_size]
-                    if isinstance(batch_ex, dict):
-                        prompts = batch_ex["prompt"]
-                        golds   = batch_ex["answers"]
-                    else:
-                        prompts = [ex["prompt"]  for ex in batch_ex]
-                        golds   = [ex["answers"] for ex in batch_ex]
-
-                    _prev_padding_side = tokenizer.padding_side
-                    tokenizer.padding_side = "left"
-                    inputs = tokenizer(
-                        prompts, return_tensors="pt", padding=True,
-                        truncation=True, max_length=max_seq_len,
-                    ).to(device)
-                    tokenizer.padding_side = _prev_padding_side
-
-                    hook_obj.reset_batch()
-
-                    generated = unwrapped.generate(
-                        **inputs,
-                        max_new_tokens=gen_max_new_tokens,
-                        min_new_tokens=gen_min_new_tokens,
-                        do_sample=do_sample,
-                        num_beams=num_beams,
-                        repetition_penalty=repetition_penalty,
-                        pad_token_id=tokenizer.pad_token_id,
-                        eos_token_id=tokenizer.eos_token_id,
-                        use_cache=True,
-                    )
-                    new_tokens = generated[:, inputs["input_ids"].shape[1]:]
-                    preds = [
-                        p.strip()
-                        for p in tokenizer.batch_decode(
-                            new_tokens, skip_special_tokens=True
-                        )
-                    ]
-
-                    for pred, gold_list in zip(preds, golds):
-                        em_scores.append(compute_exact_match(pred, gold_list))
-                        f1_scores.append(compute_f1(pred, gold_list))
-
-                    total_tokens += new_tokens.ne(tokenizer.pad_token_id).sum().item()
-
-                    if hook_obj.batch_counts is not None:
-                        tot = hook_obj.batch_counts.sum()
-                        if tot > 0:
-                            exp = tot / len(hook_obj.batch_counts)
-                            hook_obj.batch_vios.append(
-                                np.max(np.abs(hook_obj.batch_counts - exp)) / tot
-                            )
-                    take_resource_snapshot(resources)
-
-        task_metrics["Exact Match"] = f"{np.mean(em_scores):.4f}" if em_scores else "0.0000"
-        task_metrics["F1"]          = f"{np.mean(f1_scores):.4f}" if f1_scores else "0.0000"
         measured_flops = flop_counter.get_total_flops()
 
     else:

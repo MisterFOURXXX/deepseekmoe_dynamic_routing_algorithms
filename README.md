@@ -13,7 +13,7 @@ We address these limitations by integrating DYNMoE's dynamic routing algorithm w
 - **Dynamic Routing Integration** – Replaced DeepSeekMoE's fixed Top‑K routing with DYNMoE's Top‑Any gating, enabling token‑level adaptive expert activation.
 - **Enhanced Auxiliary Loss** – Incorporated diversity and simplicity losses to promote expert orthogonality and stable routing.
 - **Adaptive Expert Tuning** – Implemented automatic expert pool resizing during training to match data complexity.
-- **Comprehensive Evaluation** – Evaluated on computational efficiency and model performance during training and fine tuning using the SlimPajama dataset, combined with benchmark evaluation for inference across multiple benchmarks MiniPile, ARC-Challenge, and TriviaQA
+- **Comprehensive Evaluation** – Evaluated on computational efficiency and model performance during training and fine tuning using the SlimPajama dataset, combined with benchmark evaluation for LLMs inference on MiniPile benchmark.
 
 ---
 
@@ -117,13 +117,6 @@ python -m pip install -r requirements.txt
 
 **Note: Restart kernel after finish running setup.sh**
 
-**Step 4: Execute Data Preprocessing**
-
-```bash
-cd ./deepseekmoe_dynamic_routing_algorithms/source/data_preprocessing          # Ex. cd /content/deepseekmoe_dynamic_routing_algorithms/data_preprocessing
-python3 preprocessing.py
-```
-
 ---
 
 ### Running Experiments
@@ -153,10 +146,7 @@ Evaluates both fine‑tuned models on the test sets, comprehensively measuring t
 
 1. **Expert load balance:** Utilizes the Maximal Violation (MaxVio) metric across batches to detect routing collapse and quantify expert load distribution.
 2. **Computational efficiency:** Tracks hardware resource usage (GPU/CPU memory and utilization) via PyTorch tooling, NVIDIA-SMI, and psutil. Efficiency is quantified using active versus total parameter ratios, training GFLOPs per step, and inference GFLOP throughput.
-3. **Model performance:** Assesses language modeling capability across three domains:
-   - **Language Modeling:** Loss and perplexity on SlimPajama during training/fine-tuning, and perplexity on MiniPile during evaluation.
-   - **Reasoning and Reading Comprehension:** Accuracy on ARC-Challenge and RACE benchmarks (comparing baseline and prototype outputs to the dataset answers).
-   - **Closed-book Question Answering:** Exact Match (EM) rate on TriviaQA and AmbigQA.
+3. **Model performance:** Assesses language modeling capability of **Language Modeling** with perplexity on MiniPile during inference.
 
 **Configuration:** Evaluation parameters (e.g., `eval_batch_size`, `max_seq_len`, `gen_max_new_tokens`) are defined in a centralized configuration cell at the top of the notebook and passed directly to the evaluation runner.
 
