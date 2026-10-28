@@ -9,7 +9,7 @@ cd "$SCRIPT_DIR"
 # >>>>>>>>>> EDIT ONLY THESE TWO LINES <<<<<<<<<<<<<<<<<<<<<<<
 # ------------------------------------------------------------
 REPO_ROOT="./deepseekmoe_dynamic_routing_algorithms"   # Please change to your path to this repo, e.g. "/content/deepseekmoe_dynamic_routing_algorithms"
-HF_TOKEN="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"       # Revise this to your Hugging Face token, e.g. "hf_XXXX"
+HF_TOKEN="hf_..."       # Revise this to your Hugging Face token, e.g. "hf_XXXX"
 # ------------------------------------------------------------
 
 cd "$REPO_ROOT"
@@ -17,6 +17,7 @@ REPO_ROOT_ABS="$(pwd)"
 
 # Derive paths from REPO_ROOT
 DATASET_ROOT="$REPO_ROOT_ABS/dataset"
+DATA_PRE="$REPO_ROOT_ABS/source/data_preprocessing"
 OUTPUT_BASELINE="$REPO_ROOT_ABS/checkpoints/baseline"
 OUTPUT_DEEPSEEK_DYNMOE="$REPO_ROOT_ABS/checkpoints/dynmoe_routing"
 
@@ -72,4 +73,10 @@ pip install --upgrade pip setuptools wheel
 pip install torch==2.13.0 torchvision==0.28.0       # PyTorch Version 2.11.0 also compatible : pip install torch==2.11.0 torchvision==0.26.0 torchaudio==2.11.0
 pip install -r requirements.txt
 echo "Environment setup complete!"
+
+echo "Data Preprocessing ..."
+cd "$DATA_PRE"
+python3 preprocessing.py
+echo "Data preprocessing complete!"
+
 exit 0
