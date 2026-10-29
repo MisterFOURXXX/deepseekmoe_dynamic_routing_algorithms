@@ -15,7 +15,6 @@ from .config import (
     DEFAULT_VAL_PATH,
     DEFAULT_MINIPILE_PATH,
     PATHS as DATASET_PATHS,
-    validate_config,
 )
 from .preprocessing import run_preprocessing
 
@@ -34,6 +33,5 @@ __all__ = [
     "DEFAULT_VAL_PATH",
     "DEFAULT_MINIPILE_PATH",
     "DATASET_PATHS",
-    "validate_config",
     "run_preprocessing",
 ]

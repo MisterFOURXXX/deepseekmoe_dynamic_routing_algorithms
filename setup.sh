@@ -74,9 +74,4 @@ pip install torch==2.13.0 torchvision==0.28.0       # PyTorch Version 2.11.0 als
 pip install -r requirements.txt
 echo "Environment setup complete!"
 
-echo "Data Preprocessing ..."
-cd "$DATA_PRE"
-python3 preprocessing.py
-echo "Data preprocessing complete!"
-
 exit 0

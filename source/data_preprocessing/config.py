@@ -1,6 +1,6 @@
 import os
 
-HF_TOKEN             = "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"
+HF_TOKEN             = "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"
 TOKENIZER_NAME       = "deepseek-ai/deepseek-moe-16b-base"
 
 MAX_SEQ_LEN          = 384
@@ -8,8 +8,8 @@ SAMPLE_RATIO         = 0.0003
 BENCH_SAMPLE_RATIO   = 0.05
 
 # Split Thresholds
-VALIDATION_RATIO     = 0.1   # 10% of the original HF validation set for local validation
-TRAIN_SPLIT_RATIO    = 0.6   # 60% of sampled training data → train, 40% → fine-tune
+VALIDATION_RATIO     = 0.1   # 10 percent of the original dataset for local validation
+TRAIN_SPLIT_RATIO    = 0.6   # 60 percent of sampled data to train, 40 percent to fine-tune
 
 DATASET_ROOT = "/content/deepseekmoe_dynamic_routing_algorithms/dataset"
 REPO_ROOT    = "/content/deepseekmoe_dynamic_routing_algorithms"
