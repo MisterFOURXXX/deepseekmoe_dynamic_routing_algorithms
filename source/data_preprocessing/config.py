@@ -7,8 +7,12 @@ MAX_SEQ_LEN          = 384
 SAMPLE_RATIO         = 0.0003
 BENCH_SAMPLE_RATIO   = 0.05
 
+# Split Thresholds
+VALIDATION_RATIO     = 0.1   # 10% of the original HF validation set for local validation
+TRAIN_SPLIT_RATIO    = 0.6   # 60% of sampled training data → train, 40% → fine-tune
+
 DATASET_ROOT = "/content/deepseekmoe_dynamic_routing_algorithms/dataset"
-REPO_ROOT = "/content/deepseekmoe_dynamic_routing_algorithms"
+REPO_ROOT    = "/content/deepseekmoe_dynamic_routing_algorithms"
 
 DEFAULT_TOKENIZER_PATH = os.path.join(DATASET_ROOT, "tokenizer")
 DEFAULT_TRAIN_PATH     = os.path.join(DATASET_ROOT, "slimpajama_train")
@@ -24,3 +28,7 @@ PATHS = {
     "slimpajama_val":      DEFAULT_VAL_PATH,
     "minipile":            DEFAULT_MINIPILE_PATH,
 }
+
+# Metadata file to track what parameters were used when building datasets
+META_FILE = os.path.join(DATASET_ROOT, "_preprocessing_meta.json")
+

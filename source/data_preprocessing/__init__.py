@@ -6,6 +6,8 @@ from .config import (
     MAX_SEQ_LEN,
     SAMPLE_RATIO,
     BENCH_SAMPLE_RATIO,
+    VALIDATION_RATIO,
+    TRAIN_SPLIT_RATIO,
     DATASET_ROOT,
     DEFAULT_TOKENIZER_PATH,
     DEFAULT_TRAIN_PATH,
@@ -13,7 +15,9 @@ from .config import (
     DEFAULT_VAL_PATH,
     DEFAULT_MINIPILE_PATH,
     PATHS as DATASET_PATHS,
+    validate_config,
 )
+from .preprocessing import run_preprocessing
 
 __all__ = [
     "HF_TOKEN",
@@ -21,6 +25,8 @@ __all__ = [
     "MAX_SEQ_LEN",
     "SAMPLE_RATIO",
     "BENCH_SAMPLE_RATIO",
+    "VALIDATION_RATIO",
+    "TRAIN_SPLIT_RATIO",
     "DATASET_ROOT",
     "DEFAULT_TOKENIZER_PATH",
     "DEFAULT_TRAIN_PATH",
@@ -28,5 +34,6 @@ __all__ = [
     "DEFAULT_VAL_PATH",
     "DEFAULT_MINIPILE_PATH",
     "DATASET_PATHS",
-    "preprocessing",
+    "validate_config",
+    "run_preprocessing",
 ]
