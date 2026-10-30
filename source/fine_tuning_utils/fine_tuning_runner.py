@@ -91,7 +91,7 @@ def _class_uses_dynmoe(cls):
     return any(n in globals() for n in names)
 
 
-def fine_tune_model(pretrained_path, output_dir, **kwargs):
+def fine_tune_model(pretrained_path, output_dir, data_file_path=None, val_data_file_path=None, **kwargs):
     # Resolve Fine-Tuning Hyperparameters
     _max_seq_len             = kwargs.pop("MAX_SEQ_LEN", None)
     per_device_batch         = kwargs.pop("PER_DEVICE_BATCH", PER_DEVICE_BATCH)
@@ -112,12 +112,16 @@ def fine_tune_model(pretrained_path, output_dir, **kwargs):
     print(f"Loading pretrained model from {pretrained_path} ...")
     model, tokenizer = load_model_and_tokenizer(pretrained_path)
 
+    # Resolve Dataset Paths
+    finetune_path = data_file_path if data_file_path is not None else DEFAULT_FINE_PATH
+    val_path = val_data_file_path if val_data_file_path is not None else DEFAULT_VAL_PATH
+
     # Load Pre-tokenized Datasets from Disk 
-    print(f"Loading train dataset from {DEFAULT_FINE_PATH} ...")
-    finetune_dataset = load_from_disk(DEFAULT_FINE_PATH)
+    print(f"Loading train dataset from {finetune_path} ...")
+    finetune_dataset = load_from_disk(finetune_path)
     
-    print(f"Loading val dataset from {DEFAULT_VAL_PATH} ...")
-    val_dataset = load_from_disk(DEFAULT_VAL_PATH)
+    print(f"Loading val dataset from {val_path} ...")
+    val_dataset = load_from_disk(val_path)
 
     data_collator = DataCollatorForLanguageModeling(
         tokenizer=tokenizer, mlm=False, pad_to_multiple_of=8
@@ -239,11 +243,17 @@ def fine_tune_model(pretrained_path, output_dir, **kwargs):
     return trainer
 
 
-def run_fine_tuning(pretrained_path, output_dir, **kwargs):
+def run_fine_tuning(pretrained_path, output_dir, data_file_path=None, val_data_file_path=None, **kwargs):
     print("=" * 60)
     print(f"FINE-TUNING from {pretrained_path}")
     print("=" * 60)
 
-    trainer = fine_tune_model(pretrained_path, output_dir, **kwargs)
+    trainer = fine_tune_model(
+        pretrained_path, 
+        output_dir, 
+        data_file_path=data_file_path,
+        val_data_file_path=val_data_file_path,
+        **kwargs
+    )
     cleanup_trainer(trainer)
     clear_cached_data()

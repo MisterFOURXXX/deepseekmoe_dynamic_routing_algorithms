@@ -36,7 +36,10 @@ def clear_gpu_memory():
         torch.cuda.empty_cache()
 
 
-def run_evaluate(model_path, label="Fine-tuned Model", **kwargs):
+def run_evaluate(model_path, label="Fine-tuned Model", data_file_path=None, **kwargs):
+    """
+    Run evaluation on a fine-tuned model.
+    """
     print("=" * 60)
     print(f"EVALUATING: {label}")
     print(f"Model path: {model_path}")
@@ -52,10 +55,13 @@ def run_evaluate(model_path, label="Fine-tuned Model", **kwargs):
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    # Load benchmarks from disk (Only MiniPile remains)
-    print("Loading benchmark datasets from disk...")
+    # Resolve dataset path (fallback to default MiniPile)
+    resolved_data_path = data_file_path if data_file_path is not None else _p("minipile")
+
+    # Load benchmark from disk
+    print(f"Loading benchmark dataset from {resolved_data_path} ...")
     datasets_to_run = [
-        ("minipile",   load_from_disk(_p("minipile"))),
+        ("minipile", load_from_disk(resolved_data_path)),
     ]
 
     for name, ds in datasets_to_run:
@@ -96,7 +102,7 @@ def run_evaluate(model_path, label="Fine-tuned Model", **kwargs):
         print("\nNo benchmarks were run.")
 
 
-def evaluate_all_finetuned_models(**kwargs):
+def evaluate_all_finetuned_models(data_file_path=None, **kwargs):
     """
     Automatically evaluates the two fine-tuned models saved in the checkpoints folder.
     Any kwargs are forwarded to run_evaluate for hyperparameter overrides.
@@ -106,7 +112,17 @@ def evaluate_all_finetuned_models(**kwargs):
     print("#" * 80)
 
     # Baseline
-    run_evaluate(FINAL_FT_BASELINE, label="Baseline Fine-Tuned", **kwargs)
+    run_evaluate(
+        FINAL_FT_BASELINE,
+        label="Baseline Fine-Tuned",
+        data_file_path=data_file_path,
+        **kwargs,
+    )
 
     # DeepSeek Dynamics Routing
-    run_evaluate(FINAL_FT_DYNMOE_ROUTING, label="DYNMoE Routing Fine-Tuned", **kwargs)
+    run_evaluate(
+        FINAL_FT_DYNMOE_ROUTING,
+        label="DYNMoE Routing Fine-Tuned",
+        data_file_path=data_file_path,
+        **kwargs,
+    )
