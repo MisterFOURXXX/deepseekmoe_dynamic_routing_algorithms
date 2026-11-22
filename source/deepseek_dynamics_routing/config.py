@@ -5,19 +5,19 @@ from transformers.utils import logging
 from transformers.configuration_utils import PretrainedConfig
 
 # Adaptive Tuning Parameters (Section 3.4)
-AUDIT_STEPS = 100                # periodic audit interval for soft pruning / auto-tuning
-PRUNE_THRESHOLD = 0.06           # relative-usage threshold below which an expert is soft-pruned
+AUDIT_STEPS = 200                # periodic audit interval for soft pruning / auto-tuning
+PRUNE_THRESHOLD = 0.05           # relative-usage threshold below which an expert is soft-pruned
 MIN_ACTIVE_EXPERTS = 1          # keep at least this many routed experts active
-BIAS_UPDATE_INTERVAL = 5        # step interval for loss-free bias update (Eq. 11)
-CLEAR_CACHE_EVERY = 150          # memory-cache clearing interval (Section 3.4)
+BIAS_UPDATE_INTERVAL = 10        # step interval for loss-free bias update (Eq. 11)
+CLEAR_CACHE_EVERY = 200          # memory-cache clearing interval (Section 3.4)
 
 # Routing Parameters Defaults (Sections 3.1 and 3.2)
-MAX_ROUTED_EXPERTS   = 8        # upper bound on routed expert pool (Section 3.4)
-MIN_ROUTED_EXPERTS   = 0.25        # lower bound on routed expert pool (Section 3.4)
+MAX_ROUTED_EXPERTS   = 64        # upper bound on routed expert pool (Section 3.4)
+MIN_ROUTED_EXPERTS   = 1        # lower bound on routed expert pool (Section 3.4)
 MAX_ACTIVE_K         = 6        # maximum activated routed experts per token # 5
-MIN_ACTIVE_K         = 0.25        # Minimum threshold for zero-activation guard (test-time safeguard, Eq. 5)
+MIN_ACTIVE_K         = 1        # Minimum threshold for zero-activation guard (test-time safeguard, Eq. 5)
 DYNMOE_THRESHOLD_INIT = -5.85    # initial raw threshold G_j before sigmoid (Eq. 2/3)
-BIAS_UPDATE_RATE     = 0.000001   # Learning rate for bias updates (Eq. 11) # 0.00001
+BIAS_UPDATE_RATE     = 0.001   # Learning rate for bias updates (Eq. 11) # 0.00001
 
 logger = logging.get_logger(__name__)
 
@@ -146,15 +146,15 @@ class DeepseekConfig(PretrainedConfig):
     def __init__(
         self,
         vocab_size=102400,                
-        hidden_size=1024,
-        intermediate_size=4096,           
-        moe_intermediate_size=1024,
-        num_hidden_layers=6,
-        num_attention_heads=32,
-        num_key_value_heads=32,
+        hidden_size=512,
+        intermediate_size=2816,           
+        moe_intermediate_size=352,
+        num_hidden_layers=8,
+        num_attention_heads=4,
+        num_key_value_heads=4,
         # DeepSeekMoE Core Routing (Section 3.1 / 3.2)
         n_shared_experts=2,             # K_s: Fixed always-active shared experts
-        n_routed_experts=8,             # N_max: Static capacity pool for sub-experts
+        n_routed_experts=MAX_ROUTED_EXPERTS,             # N_max: Static capacity pool for sub-experts
         max_active_k=MAX_ACTIVE_K,      # K_max: Capacity bound to prevent warp divergence
         min_active_k=MIN_ACTIVE_K,      # K_min: Minimum threshold for zero-activation guard
         num_experts_per_tok=None,       # Deprecated in favor of dynamic Top-Any routing
@@ -171,7 +171,7 @@ class DeepseekConfig(PretrainedConfig):
         # Architecture & Precision Settings
         hidden_act="silu",
         max_position_embeddings=4096,
-        initializer_range=0.02,
+        initializer_range=0.006,
         rms_norm_eps=1e-5,              # Kept at 1e-5 for FP16 stability on Turing GPUs
         use_cache=True,
         pad_token_id=0,

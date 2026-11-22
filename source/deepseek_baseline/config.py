@@ -103,24 +103,24 @@ class DeepseekConfig(PretrainedConfig):
     def __init__(
         self,
         vocab_size=102400,
-        hidden_size=1024,
-        intermediate_size=4096, 
-        moe_intermediate_size=1024, 
-        num_hidden_layers=6, 
-        num_attention_heads=32, 
-        num_key_value_heads=32,  
-        n_shared_experts=2, 
-        n_routed_experts=8,  
-        num_experts_per_tok=2,  
+        hidden_size=512,                  # scale down from 4096, according to Krajewski et al., Scaling Laws for Fine-Grained MoE $6.1 (experimental-setup aspect ratio) -> d = 64·LayerWidth, where LayerWidth = 6, so d = 384
+        intermediate_size=2816,           # DeepSeek sets layer 0's FFN to the total activated expert width + $5.1.2 + released 16B config +  expert sizes 0.25 / 0.25 / 0.125	layer 0 stays dense; released config has intermediate_size = 10944 at d = 2048 -> intermediate_size = (routed exper + shared expert) × moe_intermediate_size = 8 × 256 = 2048
+        moe_intermediate_size=352,        # 0.25 x intermediate size, according to DeepSeekMoE $5.1.2: "each expert is 0.25 times the size of a standard FFN" + Table 7 values + Appendix A od model that less parameters than 2B model  -> 0.25x(8x(hidden_size)^2) = 256 where hidden_size = 384
+        num_hidden_layers=8,              # Engineering choice: 6 layers is a good tradeoff between performance and speed
+        num_attention_heads=4,            # DeepSeekMoE (V1) uses standard multi-head attention — $3 describes a standard Transformer backbone, according to GQA: Training Generalized Multi-Query Transformer Models from Multi-Head Checkpoints paper
+        num_key_value_heads=4,            # DeepSeekMoE (V1) uses standard multi-head attention — $3 describes a standard Transformer backbone, according to GQA: Training Generalized Multi-Query Transformer Models from Multi-Head Checkpoints paper
+        n_shared_experts=2,               # Follow Appendix A of the DeepSeekMoE paper (2B model) to use 1 shared expert, which is equivalent to a dense layer
+        n_routed_experts=64,              # Follow Appendix A DeepSeekMoE paper (16.4B model) to use 1 shared expert, which is equivalent to a dense layer
+        num_experts_per_tok=6,            # Follow Appendix A DeepSeekMoE paper (16.4B model) to use 1 shared expert, which is equivalent to a dense layer
         moe_layer_freq = 1,
-        first_k_dense_replace = 0, 
+        first_k_dense_replace=0, 
         norm_topk_prob = False,
         scoring_func = 'softmax',
         aux_loss_alpha = 0.001,  
         seq_aux = True,
-        hidden_act="silu",
+        hidden_act="silu",   
         max_position_embeddings=2048, 
-        initializer_range=0.02,
+        initializer_range=0.006,
         rms_norm_eps=1e-6,
         use_cache=True,
         pad_token_id=None,

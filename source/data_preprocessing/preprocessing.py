@@ -430,6 +430,8 @@ def build_slimpajama(max_seq_len, stat_sizes, force_rebuild=False):
             lambda raw=raw: manual_tokenize(raw["text"], max_seq_len),
             features=LM_FEATURES,
         )
+        total_tokens = sum(len(ids) for ids in ds["input_ids"])
+        print(f"  Total tokens in {name}: {total_tokens:,}")
         ds.save_to_disk(PATHS[name])
 
     _record_built("slimpajama", params)
@@ -483,6 +485,8 @@ def build_minipile(max_seq_len, bench_sample_ratio=BENCH_SAMPLE_RATIO, force_reb
         lambda: manual_tokenize(mp["text"], max_seq_len),
         features=LM_FEATURES,
     )
+    total_tokens = sum(len(ids) for ids in ds["input_ids"])
+    print(f"  Total tokens in minipile: {total_tokens:,}")
     ds.save_to_disk(PATHS["minipile"])
     print(f"MiniPile ({len(ds):,}) saved to {PATHS['minipile']}")
 
