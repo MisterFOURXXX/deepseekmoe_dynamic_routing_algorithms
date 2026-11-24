@@ -79,7 +79,7 @@ git clone https://github.com/yourusername/deepseekmoe_dynamic_routing_algorithms
 In `setup.sh` at `REPO_ROOT` variable, it has to change the path to your project location, and update the paths and your HuggingFace Token for downloading the SlimPajama and benchmark datasets
 
 ```bash
-REPO_ROOT="./deepseekmoe_dynamic_routing_algorithms"   # Ex. cd /content/working/deepseekmoe_dynamic_routing_algorithms
+REPO_ROOT="./deepseekmoe_dynamic_routing_algorithms/setup.sh"   # Ex. cd /content/working/deepseekmoe_dynamic_routing_algorithms
 HF_TOKEN="hf_..."                                       # Replace with your HUggingFace access token (READ token)
 ```
 
